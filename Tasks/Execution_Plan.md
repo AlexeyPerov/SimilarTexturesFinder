@@ -4,13 +4,13 @@ Use this checklist when implementing the project. Normative contracts live in [T
 
 Complete tasks **in order** unless you explicitly parallelize independent scaffolding (e.g. Flutter layout can start after CLI + JSON contracts are frozen).
 
-When task is finished then append [DONE] to its title.
+When each task is finished then append [DONE] to its title.
 
 ---
 
 ## Phase 1 — MVP (backend-first)
 
-### 1. Repository and backend skeleton
+### 1. Repository and backend skeleton [DONE]
 
 **Title:** Create `backend/` Rust binary crate with CLI wiring
 
@@ -27,7 +27,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 2. Config contract — deserialize and defaults
+### 2. Config contract — deserialize and defaults [DONE]
 
 **Title:** Implement `config.json` model and defaults
 
@@ -43,7 +43,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 3. Scanner and vertex set (ingest rules)
+### 3. Scanner and vertex set (ingest rules) [DONE]
 
 **Title:** Recursive directory scan, extension filter, symlink policy
 
@@ -59,7 +59,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 4. File hashing service
+### 4. File hashing service [DONE]
 
 **Title:** Byte-level digest per file for duplicate shortcut
 
@@ -75,7 +75,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 5. Image loader and decode failure handling
+### 5. Image loader and decode failure handling [DONE]
 
 **Title:** Decode images for metrics; tolerate failures per vertex rules
 
@@ -91,7 +91,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 6. Similarity abstraction and `MetricResult`
+### 6. Similarity abstraction and `MetricResult` [DONE]
 
 **Title:** Trait + normalization contract for metrics
 
@@ -107,7 +107,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 7. Metric: pHash
+### 7. Metric: pHash [DONE]
 
 **Title:** Perceptual hash and Hamming similarity
 
@@ -124,7 +124,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 8. Metric: resize + SSIM
+### 8. Metric: resize + SSIM [DONE]
 
 **Title:** Shared resize pipeline and SSIM score
 
@@ -140,7 +140,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 9. Metric: histogram
+### 9. Metric: histogram [DONE]
 
 **Title:** Histogram correlation (or Bhattacharyya) similarity
 
@@ -156,7 +156,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 10. Preprocess: alpha crop (SHOULD for MVP polish)
+### 10. Preprocess: alpha crop (SHOULD for MVP polish) [DONE]
 
 **Title:** Bounding box crop on alpha before SSIM/histogram/pHash inputs
 
@@ -173,7 +173,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 11. Optional: rotations wrapper (SHOULD)
+### 11. Optional: rotations wrapper (SHOULD) [DONE]
 
 **Title:** Max over 0°/90°/180°/270° (and optional flip) for enabled metrics
 
@@ -190,7 +190,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 12. `final_score` orchestration
+### 12. `final_score` orchestration [DONE]
 
 **Title:** Renormalized weights over valid enabled metrics per pair
 
@@ -207,7 +207,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 13. Pairwise comparison loop and performance
+### 13. Pairwise comparison loop and performance [DONE]
 
 **Title:** Compare all unordered pairs with rayon; early exits where possible
 
@@ -223,7 +223,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 14. Clustering — connected components
+### 14. Clustering — connected components [DONE]
 
 **Title:** Components as output groups with stable IDs
 
@@ -239,7 +239,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 15. `groups[].score` computation
+### 15. `groups[].score` computation [DONE]
 
 **Title:** Max pairwise `S` over defined pairs per §6
 
@@ -255,7 +255,7 @@ When task is finished then append [DONE] to its title.
 
 ---
 
-### 16. Write `result.json` and harden CLI exit behavior
+### 16. Write `result.json` and harden CLI exit behavior [DONE]
 
 **Title:** Serialize results; absolute paths; exit codes
 

@@ -1,0 +1,13 @@
+{
+  "enable_phash": true,
+  "enable_ssim": true,
+  "enable_histogram": true,
+  "enable_alpha_crop": false,
+  "enable_rotations": false,
+  "threshold": 0.85,
+  "weights": {
+    "phash": 0.35,
+    "ssim": 0.45,
+    "histogram": 0.2
+  }
+}
