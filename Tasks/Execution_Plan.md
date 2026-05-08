@@ -271,7 +271,7 @@ When each task is finished then append [DONE] to its title.
 
 ---
 
-### 17. Flutter project scaffold (desktop)
+### 17. Flutter project scaffold (desktop) [DONE]
 
 **Title:** Create `frontend/` Flutter desktop app shell
 
@@ -287,7 +287,7 @@ When each task is finished then append [DONE] to its title.
 
 ---
 
-### 18. Flutter — settings UI and `config.json` emission
+### 18. Flutter — settings UI and `config.json` emission [DONE]
 
 **Title:** Mirrors MVP config fields and canonical example
 
@@ -303,7 +303,7 @@ When each task is finished then append [DONE] to its title.
 
 ---
 
-### 19. Flutter — `backend_runner` service
+### 19. Flutter — `backend_runner` service [DONE]
 
 **Title:** Spawn Rust CLI; stream stdout/stderr; capture exit code
 
@@ -319,7 +319,7 @@ When each task is finished then append [DONE] to its title.
 
 ---
 
-### 20. Flutter — parse results and results UI
+### 20. Flutter — parse results and results UI [DONE]
 
 **Title:** Load `result.json`; grid with lazy thumbnails
 
@@ -335,7 +335,7 @@ When each task is finished then append [DONE] to its title.
 
 ---
 
-### 21. README and acceptance checklist
+### 21. README and acceptance checklist [DONE]
 
 **Title:** Document build, defaults, limits, binary discovery
 
