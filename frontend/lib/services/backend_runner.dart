@@ -3,6 +3,18 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+Process? _activeTextureToolProcess;
+
+/// Terminates a running `texture_tool` child, if any (e.g. app quit during scan).
+void killActiveTextureTool() {
+  final p0 = _activeTextureToolProcess;
+  if (p0 == null) return;
+  try {
+    p0.kill(ProcessSignal.sigkill);
+  } catch (_) {}
+  _activeTextureToolProcess = null;
+}
+
 /// Result of spawning `texture_tool`.
 class BackendRunResult {
   BackendRunResult({
@@ -97,25 +109,56 @@ Future<BackendRunResult> runTextureTool({
   required String outputJson,
   required String configPath,
   int threads = 4,
+  void Function(String chunk, {required bool isStderr})? onOutput,
 }) async {
-  final r = await Process.run(
-    executable,
-    [
-      '--input',
-      inputDir,
-      '--output',
-      outputJson,
-      '--config',
-      configPath,
-      '--threads',
-      '$threads',
-    ],
-    stdoutEncoding: utf8,
-    stderrEncoding: utf8,
-  );
+  final process = await Process.start(executable, [
+    '--input',
+    inputDir,
+    '--output',
+    outputJson,
+    '--config',
+    configPath,
+    '--threads',
+    '$threads',
+  ]);
+
+  final stdoutBuf = StringBuffer();
+  final stderrBuf = StringBuffer();
+
+  Future<void> drain(
+    Stream<List<int>> stream,
+    StringBuffer acc,
+    bool isStderr,
+  ) async {
+    try {
+      await for (final chunk in stream.transform(utf8.decoder)) {
+        acc.write(chunk);
+        onOutput?.call(chunk, isStderr: isStderr);
+      }
+    } catch (_) {
+      // Broken pipe / process killed — partial output is still useful.
+    }
+  }
+
+  late final int exitCode;
+  try {
+    _activeTextureToolProcess = process;
+    await Future.wait<void>([
+      drain(process.stdout, stdoutBuf, false),
+      drain(process.stderr, stderrBuf, true),
+      process.exitCode.then((c) {
+        exitCode = c;
+      }),
+    ]);
+  } finally {
+    if (_activeTextureToolProcess == process) {
+      _activeTextureToolProcess = null;
+    }
+  }
+
   return BackendRunResult(
-    exitCode: r.exitCode,
-    stdoutText: r.stdout as String,
-    stderrText: r.stderr as String,
+    exitCode: exitCode,
+    stdoutText: stdoutBuf.toString(),
+    stderrText: stderrBuf.toString(),
   );
 }

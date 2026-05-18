@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../services/json_parser.dart';
 
 class ResultsScreen extends StatefulWidget {
   const ResultsScreen({super.key, required this.appState});
@@ -17,6 +18,20 @@ class _ResultsScreenState extends State<ResultsScreen> {
   int _selectedIndex = 0;
 
   @override
+  void didUpdateWidget(ResultsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.appState.hideSingletonResultGroups !=
+        widget.appState.hideSingletonResultGroups) {
+      _selectedIndex = 0;
+    }
+  }
+
+  List<ResultGroup> _visibleGroups(List<ResultGroup> raw) {
+    if (!widget.appState.hideSingletonResultGroups) return raw;
+    return raw.where((g) => g.images.length >= 2).toList();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: widget.appState,
@@ -24,7 +39,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
         final data = widget.appState.lastScanResult;
         final path = widget.appState.lastResultPath;
 
-        if (data == null || data.groups.isEmpty) {
+        if (data == null) {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
@@ -38,11 +53,29 @@ class _ResultsScreenState extends State<ResultsScreen> {
           );
         }
 
-        final groups = data.groups;
-        if (_selectedIndex >= groups.length) {
-          _selectedIndex = 0;
+        final visible = _visibleGroups(data.groups);
+        if (visible.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'No issues found.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
         }
-        final selected = groups[_selectedIndex];
+
+        final displayIndex =
+            _selectedIndex.clamp(0, visible.length - 1);
+        if (displayIndex != _selectedIndex) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() => _selectedIndex = displayIndex);
+            }
+          });
+        }
+        final selected = visible[displayIndex];
 
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -52,14 +85,14 @@ class _ResultsScreenState extends State<ResultsScreen> {
               child: Material(
                 elevation: 1,
                 child: ListView.builder(
-                  itemCount: groups.length,
+                  itemCount: visible.length,
                   itemBuilder: (context, i) {
-                    final g = groups[i];
+                    final g = visible[i];
                     final subtitle = g.score != null
                         ? 'score: ${g.score!.toStringAsFixed(3)} · ${g.count} images'
                         : '${g.count} images';
                     return ListTile(
-                      selected: i == _selectedIndex,
+                      selected: i == displayIndex,
                       title: Text('Group ${g.id}'),
                       subtitle: Text(subtitle),
                       onTap: () => setState(() => _selectedIndex = i),
@@ -95,7 +128,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         FilledButton.tonalIcon(
                           onPressed: selected.images.isEmpty
                               ? null
-                              : () => _revealInFileManager(selected.images.first),
+                              : () =>
+                                  _revealInFileManager(selected.images.first),
                           icon: const Icon(Icons.folder_open),
                           label: const Text('Reveal in Finder / explorer'),
                         ),
@@ -156,7 +190,7 @@ class _ThumbTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final file = File(path);
     if (!file.existsSync()) {
-      return _placeholder(Icons.broken_image, 'Missing');
+      return _placeholder(context, Icons.broken_image, 'Missing');
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
@@ -164,7 +198,7 @@ class _ThumbTile extends StatelessWidget {
         file,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) =>
-            _placeholder(Icons.error_outline, 'Error'),
+            _placeholder(context, Icons.error_outline, 'Error'),
         frameBuilder: (ctx, child, frame, w) {
           if (frame == null) {
             return const Center(child: CircularProgressIndicator(strokeWidth: 2));
@@ -175,10 +209,10 @@ class _ThumbTile extends StatelessWidget {
     );
   }
 
-  Widget _placeholder(IconData icon, String label) {
+  Widget _placeholder(BuildContext context, IconData icon, String label) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade400),
+        border: Border.all(color: Theme.of(context).dividerColor),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(

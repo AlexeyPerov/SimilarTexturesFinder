@@ -29,6 +29,8 @@ class _ScanScreenState extends State<ScanScreen> {
 
   static const int _maxScanLogUiChars = 400 * 1024;
   static const int _maxToolStreamChars = 350 * 1024;
+  static const int _maxScanLogBufChars = _maxToolStreamChars * 3;
+  static const int _scanLogUiFlushThrottleMs = 200;
 
   String _capForUi(String s) {
     if (s.length <= _maxScanLogUiChars) return s;
@@ -42,6 +44,14 @@ class _ScanScreenState extends State<ScanScreen> {
     final half = maxChars ~/ 2;
     final removed = s.length - maxChars;
     return '${s.substring(0, half)}\n\n[truncated $removed characters]\n\n${s.substring(s.length - half)}';
+  }
+
+  void _rollScanLogBufferIfNeeded(StringBuffer buf) {
+    final s = buf.toString();
+    if (s.length <= _maxScanLogBufChars) return;
+    buf
+      ..clear()
+      ..write(_capToolOutput(s, _maxScanLogBufChars));
   }
 
   void _applyScanLogFromBuffer(StringBuffer buf) {
@@ -180,12 +190,29 @@ class _ScanScreenState extends State<ScanScreen> {
         'scan_phase',
         data: {'phase': 'before_runTextureTool', 'threads': threads},
       );
+
+      var lastLogUiFlush = DateTime.fromMillisecondsSinceEpoch(0);
+      void flushScanLogUi({required bool force}) {
+        final now = DateTime.now();
+        if (!force &&
+            now.difference(lastLogUiFlush).inMilliseconds < _scanLogUiFlushThrottleMs) {
+          return;
+        }
+        lastLogUiFlush = now;
+        _applyScanLogFromBuffer(logBuf);
+      }
+
       final res = await runTextureTool(
         executable: exe,
         inputDir: input,
         outputJson: outFile,
         configPath: cfgFile.path,
         threads: threads > 0 ? threads : 4,
+        onOutput: (chunk, {required isStderr}) {
+          logBuf.write(chunk);
+          _rollScanLogBufferIfNeeded(logBuf);
+          flushScanLogUi(force: false);
+        },
       );
 
       await diagnosticLog('scan_phase', data: {
@@ -197,15 +224,7 @@ class _ScanScreenState extends State<ScanScreen> {
       });
 
       if (!mounted) return;
-      logBuf.write(_capToolOutput(res.stdoutText, _maxToolStreamChars));
-      if (res.stderrText.isNotEmpty) {
-        logBuf
-          ..writeln()
-          ..writeln('--- stderr ---')
-          ..write(_capToolOutput(res.stderrText, _maxToolStreamChars ~/ 2));
-      }
-      if (!mounted) return;
-      _applyScanLogFromBuffer(logBuf);
+      flushScanLogUi(force: true);
 
       if (!mounted) return;
 
@@ -301,15 +320,13 @@ class _ScanScreenState extends State<ScanScreen> {
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: _running ? null : _runScan,
-            icon: _running
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.play_arrow),
+            icon: const Icon(Icons.play_arrow),
             label: Text(_running ? 'Running…' : 'Run texture_tool'),
           ),
+          if (_running) ...[
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(),
+          ],
           const SizedBox(height: 16),
           Text('Log', style: Theme.of(context).textTheme.titleMedium),
           Expanded(

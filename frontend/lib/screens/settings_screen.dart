@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -167,6 +169,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.all(16),
           child: ListView(
             children: [
+              Text('Appearance', style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 12),
+              Text('Theme', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment<ThemeMode>(
+                    value: ThemeMode.light,
+                    label: Text('Light'),
+                    icon: Icon(Icons.light_mode_outlined),
+                  ),
+                  ButtonSegment<ThemeMode>(
+                    value: ThemeMode.dark,
+                    label: Text('Dark'),
+                    icon: Icon(Icons.dark_mode_outlined),
+                  ),
+                  ButtonSegment<ThemeMode>(
+                    value: ThemeMode.system,
+                    label: Text('System'),
+                    icon: Icon(Icons.settings_suggest_outlined),
+                  ),
+                ],
+                selected: {widget.appState.themeMode},
+                onSelectionChanged: (next) {
+                  if (next.isEmpty) return;
+                  unawaited(widget.appState.setThemeMode(next.first));
+                },
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                title: const Text('Hide single-image groups in Results'),
+                subtitle: const Text(
+                  'When enabled, groups with only one image are hidden. Default: on.',
+                ),
+                value: widget.appState.hideSingletonResultGroups,
+                onChanged: (v) {
+                  unawaited(widget.appState.setHideSingletonResultGroups(v));
+                },
+              ),
+              const Divider(height: 40),
               Text('Backend (texture_tool)', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 12),
               Text(

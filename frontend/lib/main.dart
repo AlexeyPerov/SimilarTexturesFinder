@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'app/theme/app_theme.dart';
 import 'app_state.dart';
 import 'screens/results_screen.dart';
 import 'screens/scan_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/backend_runner.dart';
 import 'services/diagnostic_log.dart';
 
 Future<void> main() async {
@@ -30,23 +32,37 @@ Future<void> main() async {
   runApp(TextureFinderApp(appState: appState));
 }
 
-class TextureFinderApp extends StatelessWidget {
+class TextureFinderApp extends StatefulWidget {
   const TextureFinderApp({super.key, required this.appState});
 
   final AppState appState;
 
   @override
+  State<TextureFinderApp> createState() => _TextureFinderAppState();
+}
+
+class _TextureFinderAppState extends State<TextureFinderApp> {
+  late final AppLifecycleListener _lifecycle = AppLifecycleListener(
+    onDetach: killActiveTextureTool,
+  );
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: appState,
+      animation: widget.appState,
       builder: (context, _) {
         return MaterialApp(
           title: 'Similar Textures',
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-            useMaterial3: true,
-          ),
-          home: HomeShell(appState: appState),
+          theme: AppThemeData.lightThemeData,
+          darkTheme: AppThemeData.darkThemeData,
+          themeMode: widget.appState.themeMode,
+          home: HomeShell(appState: widget.appState),
         );
       },
     );

@@ -1,8 +1,31 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 import 'models/config.dart';
 import 'services/json_parser.dart';
 import 'services/user_preferences.dart';
+
+ThemeMode themeModeFromStorage(String? raw) {
+  switch (raw) {
+    case 'light':
+      return ThemeMode.light;
+    case 'system':
+      return ThemeMode.system;
+    case 'dark':
+    default:
+      return ThemeMode.dark;
+  }
+}
+
+String themeModeToStorage(ThemeMode mode) {
+  switch (mode) {
+    case ThemeMode.light:
+      return 'light';
+    case ThemeMode.dark:
+      return 'dark';
+    case ThemeMode.system:
+      return 'system';
+  }
+}
 
 /// Shared app state: analysis settings and last scan outputs.
 class AppState extends ChangeNotifier {
@@ -19,6 +42,11 @@ class AppState extends ChangeNotifier {
   /// Last scan input folder (persisted); used to pre-fill Scan and folder picker.
   String? lastScanInputFolder;
 
+  ThemeMode themeMode = ThemeMode.dark;
+
+  /// When true, Results hides groups with only one image (persisted, default true).
+  bool hideSingletonResultGroups = true;
+
   /// Path to last written `config.json` for texture_tool (temp file).
   String? lastConfigPath;
 
@@ -31,6 +59,21 @@ class AppState extends ChangeNotifier {
     textureToolExecutableOverride =
         await _prefs.loadTextureToolExecutableOverride();
     lastScanInputFolder = await _prefs.loadLastScanInputFolder();
+    final appearance = await _prefs.loadAppearancePreferences();
+    themeMode = themeModeFromStorage(appearance.themeModeRaw);
+    hideSingletonResultGroups = appearance.hideSingletonGroups;
+    notifyListeners();
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    themeMode = mode;
+    await _prefs.saveThemeModeRaw(themeModeToStorage(mode));
+    notifyListeners();
+  }
+
+  Future<void> setHideSingletonResultGroups(bool value) async {
+    hideSingletonResultGroups = value;
+    await _prefs.saveHideSingletonResultGroups(value);
     notifyListeners();
   }
 
