@@ -63,4 +63,4 @@ target
 rustc-ice-*.txt
 
 # Test images
-/TestImages/
+/test-images/
