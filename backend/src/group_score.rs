@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::vertex::Vertex;
+
 fn pair_key(i: usize, j: usize) -> (usize, usize) {
     if i < j {
         (i, j)
@@ -10,18 +12,18 @@ fn pair_key(i: usize, j: usize) -> (usize, usize) {
 
 pub fn group_scores(
     groups: &[Vec<usize>],
-    digests: &[Vec<u8>],
+    vertices: &[Vertex],
     cache: &HashMap<(usize, usize), f64>,
 ) -> Vec<Option<f64>> {
     groups
         .iter()
-        .map(|g| score_one_group(g, digests, cache))
+        .map(|g| score_one_group(g, vertices, cache))
         .collect()
 }
 
 fn score_one_group(
     g: &[usize],
-    digests: &[Vec<u8>],
+    vertices: &[Vertex],
     cache: &HashMap<(usize, usize), f64>,
 ) -> Option<f64> {
     if g.len() < 2 {
@@ -33,7 +35,7 @@ fn score_one_group(
         for bi in (ai + 1)..g.len() {
             let i = g[ai];
             let j = g[bi];
-            let s = if digests[i] == digests[j] {
+            let s = if vertices[i].digest == vertices[j].digest {
                 Some(1.0)
             } else {
                 cache.get(&pair_key(i, j)).copied()
@@ -49,13 +51,24 @@ fn score_one_group(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    fn make_vertex(id: u8) -> Vertex {
+        Vertex {
+            path: PathBuf::from(format!("/tmp/{id}")),
+            digest: vec![id],
+            features: None,
+        }
+    }
 
     #[test]
     fn hash_equal_only_group() {
+        let v0 = make_vertex(1);
+        let v1 = make_vertex(1);
         let groups = vec![vec![0, 1]];
-        let digests = vec![vec![1], vec![1]];
+        let vertices = vec![v0, v1];
         let cache = HashMap::new();
-        let sc = group_scores(&groups, &digests, &cache);
+        let sc = group_scores(&groups, &vertices, &cache);
         assert_eq!(sc[0], Some(1.0));
     }
 }

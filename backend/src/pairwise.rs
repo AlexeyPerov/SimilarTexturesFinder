@@ -3,12 +3,11 @@ use std::collections::HashMap;
 use rayon::prelude::*;
 
 use crate::config::Config;
-use crate::features::Features;
+use crate::similarity::combine;
 use crate::similarity::histogram::{self, HistMethod};
 use crate::similarity::phash;
 use crate::similarity::ssim;
 use crate::similarity::types::MetricResult;
-use crate::similarity::combine;
 use crate::vertex::Vertex;
 
 pub struct PairwiseStats {
@@ -27,44 +26,41 @@ fn pair_key(i: usize, j: usize) -> (usize, usize) {
 
 pub fn pairwise_compare(cfg: &Config, vertices: &[Vertex], threads: usize) -> PairwiseStats {
     let n = vertices.len();
-    let digests: Vec<Vec<u8>> = vertices.iter().map(|v| v.digest.clone()).collect();
-    let features: Vec<Option<Features>> = vertices.iter().map(|v| v.features.clone()).collect();
-
     let hist_method = histogram::parse_hist_method(&cfg.hist_method);
-
-    let pairs: Vec<(usize, usize)> = (0..n)
-        .flat_map(|i| ((i + 1)..n).map(move |j| (i, j)))
-        .collect();
+    let thr = cfg.threshold;
 
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads.max(1))
         .build()
         .expect("rayon thread pool");
 
-    let thr = cfg.threshold;
     let results: Vec<(usize, usize, bool, Option<f64>)> = pool.install(|| {
-        pairs
-            .par_iter()
-            .map(|&(i, j)| {
-                let hash_eq = digests[i] == digests[j];
-                let fs_out = if hash_eq {
-                    None
-                } else if let (Some(fa), Some(fb)) = (&features[i], &features[j]) {
-                    let ph = cfg
-                        .enable_phash
-                        .then(|| max_phash(fa, fb, cfg.phash_max_distance));
-                    let ss = cfg
-                        .enable_ssim
-                        .then(|| max_ssim(fa, fb, cfg.ssim_threshold));
-                    let hi = cfg
-                        .enable_histogram
-                        .then(|| max_hist(fa, fb, hist_method));
-                    combine(cfg, ph, ss, hi)
-                } else {
-                    None
-                };
+        (0..n)
+            .into_par_iter()
+            .flat_map(|i| {
+                (i + 1..n).into_par_iter().map(move |j| {
+                    let hash_eq = vertices[i].digest == vertices[j].digest;
+                    let fs_out = if hash_eq {
+                        None
+                    } else if let (Some(fa), Some(fb)) =
+                        (&vertices[i].features, &vertices[j].features)
+                    {
+                        let ph = cfg
+                            .enable_phash
+                            .then(|| max_phash(fa, fb, cfg.phash_max_distance));
+                        let ss = cfg
+                            .enable_ssim
+                            .then(|| max_ssim(fa, fb, cfg.ssim_threshold));
+                        let hi = cfg
+                            .enable_histogram
+                            .then(|| max_hist(fa, fb, hist_method));
+                        combine(cfg, ph, ss, hi)
+                    } else {
+                        None
+                    };
 
-                (i, j, hash_eq, fs_out)
+                    (i, j, hash_eq, fs_out)
+                })
             })
             .collect()
     });
@@ -78,9 +74,9 @@ pub fn pairwise_compare(cfg: &Config, vertices: &[Vertex], threads: usize) -> Pa
             hash_edges.push((i, j));
         }
         if let Some(fs) = fs {
-            score_cache.insert(pair_key(i, j), fs);
             if !hash_eq && fs > thr {
                 composite_edges.push((i, j));
+                score_cache.insert(pair_key(i, j), fs);
             }
         }
     }
@@ -92,7 +88,7 @@ pub fn pairwise_compare(cfg: &Config, vertices: &[Vertex], threads: usize) -> Pa
     }
 }
 
-fn max_phash(fa: &Features, fb: &Features, max_dist: u32) -> MetricResult {
+fn max_phash(fa: &crate::features::Features, fb: &crate::features::Features, max_dist: u32) -> MetricResult {
     let ha = fa.transforms[0].phash;
     let mut best = MetricResult {
         score: -1.0,
@@ -116,7 +112,7 @@ fn max_phash(fa: &Features, fb: &Features, max_dist: u32) -> MetricResult {
     }
 }
 
-fn max_ssim(fa: &Features, fb: &Features, min_ssim: f64) -> MetricResult {
+fn max_ssim(fa: &crate::features::Features, fb: &crate::features::Features, min_ssim: f64) -> MetricResult {
     let la = &fa.transforms[0].ssim_luma;
     let mut best = MetricResult {
         score: -1.0,
@@ -140,7 +136,7 @@ fn max_ssim(fa: &Features, fb: &Features, min_ssim: f64) -> MetricResult {
     }
 }
 
-fn max_hist(fa: &Features, fb: &Features, method: HistMethod) -> MetricResult {
+fn max_hist(fa: &crate::features::Features, fb: &crate::features::Features, method: HistMethod) -> MetricResult {
     let ha = &fa.transforms[0].histogram;
     let mut best = MetricResult {
         score: -1.0,

@@ -169,8 +169,6 @@ fn run() -> Result<(), ExitCode> {
     );
 
     let n = vertices.len();
-    let path_refs: Vec<PathBuf> = vertices.iter().map(|v| v.path.clone()).collect();
-    let digests: Vec<Vec<u8>> = vertices.iter().map(|v| v.digest.clone()).collect();
 
     let n_pairs: u128 = if n >= 2 {
         (n as u128) * ((n - 1) as u128) / 2
@@ -194,13 +192,13 @@ fn run() -> Result<(), ExitCode> {
         n,
         &stats.hash_edges,
         &stats.composite_edges,
-        &path_refs,
+        &vertices,
     );
     eprintln!(
         "texture_tool: clustering done: {} groups",
         group_indices.len()
     );
-    let group_scores = group_score::group_scores(&group_indices, &digests, &stats.score_cache);
+    let group_scores = group_score::group_scores(&group_indices, &vertices, &stats.score_cache);
 
     let mut groups_out = Vec::with_capacity(group_indices.len());
     for (gi, members) in group_indices.iter().enumerate() {

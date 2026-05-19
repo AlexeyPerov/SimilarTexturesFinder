@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+
+use crate::vertex::Vertex;
 
 pub struct Dsu {
     parent: Vec<usize>,
@@ -43,7 +44,7 @@ pub fn build_groups(
     n: usize,
     hash_edges: &[(usize, usize)],
     composite_edges: &[(usize, usize)],
-    paths: &[PathBuf],
+    vertices: &[Vertex],
 ) -> Vec<Vec<usize>> {
     let mut dsu = Dsu::new(n);
     for &(i, j) in hash_edges {
@@ -61,12 +62,18 @@ pub fn build_groups(
 
     let mut groups: Vec<Vec<usize>> = buckets.into_values().collect();
     for g in &mut groups {
-        g.sort_by(|a, b| paths[*a].to_string_lossy().cmp(&paths[*b].to_string_lossy()));
+        g.sort_by(|a, b| {
+            vertices[*a]
+                .path
+                .to_string_lossy()
+                .cmp(&vertices[*b].path.to_string_lossy())
+        });
     }
     groups.sort_by(|ga, gb| {
-        paths[ga[0]]
+        vertices[ga[0]]
+            .path
             .to_string_lossy()
-            .cmp(&paths[gb[0]].to_string_lossy())
+            .cmp(&vertices[gb[0]].path.to_string_lossy())
     });
     groups
 }
