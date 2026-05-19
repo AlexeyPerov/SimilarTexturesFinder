@@ -8,6 +8,7 @@ name = "texture_tool"
 path = "src/main.rs"
 
 [dependencies]
+ctrlc = "3"
 digest = "0.10"
 clap = { version = "4", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff"] }

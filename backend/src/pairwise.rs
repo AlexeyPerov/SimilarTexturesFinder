@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use rayon::prelude::*;
 
+use crate::cancel::is_cancelled;
 use crate::config::Config;
 use crate::similarity::combine;
 use crate::similarity::histogram::{self, HistMethod};
@@ -12,7 +13,6 @@ use crate::vertex::Vertex;
 
 pub struct PairwiseStats {
     pub score_cache: HashMap<(usize, usize), f64>,
-    pub hash_edges: Vec<(usize, usize)>,
     pub composite_edges: Vec<(usize, usize)>,
 }
 
@@ -24,7 +24,12 @@ fn pair_key(i: usize, j: usize) -> (usize, usize) {
     }
 }
 
-pub fn pairwise_compare(cfg: &Config, vertices: &[Vertex], threads: usize) -> PairwiseStats {
+pub fn pairwise_compare(
+    cfg: &Config,
+    vertices: &[Vertex],
+    threads: usize,
+    digest_rep: &[usize],
+) -> PairwiseStats {
     let n = vertices.len();
     let hist_method = histogram::parse_hist_method(&cfg.hist_method);
     let thr = cfg.threshold;
@@ -34,47 +39,50 @@ pub fn pairwise_compare(cfg: &Config, vertices: &[Vertex], threads: usize) -> Pa
         .build()
         .expect("rayon thread pool");
 
-    let results: Vec<(usize, usize, bool, Option<f64>)> = pool.install(|| {
+    let results: Vec<(usize, usize, Option<f64>)> = pool.install(|| {
         (0..n)
             .into_par_iter()
             .flat_map(|i| {
-                (i + 1..n).into_par_iter().map(move |j| {
-                    let hash_eq = vertices[i].digest == vertices[j].digest;
-                    let fs_out = if hash_eq {
-                        None
-                    } else if let (Some(fa), Some(fb)) =
-                        (&vertices[i].features, &vertices[j].features)
-                    {
-                        let ph = cfg
-                            .enable_phash
-                            .then(|| max_phash(fa, fb, cfg.phash_max_distance));
-                        let ss = cfg
-                            .enable_ssim
-                            .then(|| max_ssim(fa, fb, cfg.ssim_threshold));
-                        let hi = cfg
-                            .enable_histogram
-                            .then(|| max_hist(fa, fb, hist_method));
-                        combine(cfg, ph, ss, hi)
-                    } else {
-                        None
-                    };
+                let rep_i = digest_rep[i];
+                (i + 1..n)
+                    .into_par_iter()
+                    .filter_map(move |j| {
+                        if is_cancelled() {
+                            return None;
+                        }
+                        if rep_i == digest_rep[j] {
+                            return None;
+                        }
+                        let fs_out =
+                            if let (Some(fa), Some(fb)) =
+                                (&vertices[i].features, &vertices[j].features)
+                            {
+                                let ph = cfg
+                                    .enable_phash
+                                    .then(|| max_phash(fa, fb, cfg.phash_max_distance));
+                                let ss = cfg
+                                    .enable_ssim
+                                    .then(|| max_ssim(fa, fb, cfg.ssim_threshold));
+                                let hi = cfg
+                                    .enable_histogram
+                                    .then(|| max_hist(fa, fb, hist_method));
+                                combine(cfg, ph, ss, hi)
+                            } else {
+                                None
+                            };
 
-                    (i, j, hash_eq, fs_out)
-                })
+                        Some((i, j, fs_out))
+                    })
             })
             .collect()
     });
 
     let mut score_cache = HashMap::new();
-    let mut hash_edges = Vec::new();
     let mut composite_edges = Vec::new();
 
-    for (i, j, hash_eq, fs) in results {
-        if hash_eq {
-            hash_edges.push((i, j));
-        }
+    for (i, j, fs) in results {
         if let Some(fs) = fs {
-            if !hash_eq && fs > thr {
+            if fs > thr {
                 composite_edges.push((i, j));
                 score_cache.insert(pair_key(i, j), fs);
             }
@@ -83,12 +91,15 @@ pub fn pairwise_compare(cfg: &Config, vertices: &[Vertex], threads: usize) -> Pa
 
     PairwiseStats {
         score_cache,
-        hash_edges,
         composite_edges,
     }
 }
 
-fn max_phash(fa: &crate::features::Features, fb: &crate::features::Features, max_dist: u32) -> MetricResult {
+fn max_phash(
+    fa: &crate::features::Features,
+    fb: &crate::features::Features,
+    max_dist: u32,
+) -> MetricResult {
     let ha = fa.transforms[0].phash;
     let mut best = MetricResult {
         score: -1.0,
@@ -112,7 +123,11 @@ fn max_phash(fa: &crate::features::Features, fb: &crate::features::Features, max
     }
 }
 
-fn max_ssim(fa: &crate::features::Features, fb: &crate::features::Features, min_ssim: f64) -> MetricResult {
+fn max_ssim(
+    fa: &crate::features::Features,
+    fb: &crate::features::Features,
+    min_ssim: f64,
+) -> MetricResult {
     let la = &fa.transforms[0].ssim_luma;
     let mut best = MetricResult {
         score: -1.0,
@@ -136,7 +151,11 @@ fn max_ssim(fa: &crate::features::Features, fb: &crate::features::Features, min_
     }
 }
 
-fn max_hist(fa: &crate::features::Features, fb: &crate::features::Features, method: HistMethod) -> MetricResult {
+fn max_hist(
+    fa: &crate::features::Features,
+    fb: &crate::features::Features,
+    method: HistMethod,
+) -> MetricResult {
     let ha = &fa.transforms[0].histogram;
     let mut best = MetricResult {
         score: -1.0,

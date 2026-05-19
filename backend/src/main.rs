@@ -1,3 +1,4 @@
+mod cancel;
 mod clustering;
 mod config;
 mod features;
@@ -10,38 +11,39 @@ mod scanner;
 mod similarity;
 mod vertex;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
 use clap::Parser;
 
+use crate::cancel::{is_cancelled, setup_cancel_handler};
 use crate::features::extract::extract_features;
 use crate::image_loader::ImageData;
 use crate::similarity::prepare_vertex;
 use crate::vertex::Vertex;
 
+const EXIT_CANCELLED: u8 = 2;
+
 #[derive(Parser, Debug)]
 #[command(name = "texture_tool", version, about = "Similar texture finder (MVP backend)")]
 struct Args {
-    /// Root folder to scan (recursive).
     #[arg(long)]
     input: PathBuf,
 
-    /// Path for `result.json`.
     #[arg(long)]
     output: PathBuf,
 
-    /// Path to `config.json`.
     #[arg(long)]
     config: PathBuf,
 
-    /// Worker threads for pairwise comparison (`rayon` pool size).
     #[arg(long)]
     threads: Option<usize>,
 }
 
 fn main() -> ExitCode {
+    setup_cancel_handler();
     if let Err(code) = run() {
         return code;
     }
@@ -98,6 +100,11 @@ fn run() -> Result<(), ExitCode> {
         scan_start.elapsed().as_secs_f64()
     );
 
+    if is_cancelled() {
+        eprintln!("texture_tool: cancelled");
+        return Err(ExitCode::from(EXIT_CANCELLED));
+    }
+
     let mut hash_cache = file_hash::FileHashCache::new(hash_algo);
 
     let mut vertices: Vec<Vertex> = Vec::new();
@@ -105,10 +112,14 @@ fn run() -> Result<(), ExitCode> {
     let mut n_hash_fail = 0u64;
     let mut n_decode_ok = 0u64;
     let mut n_prepare_ok = 0u64;
-    // `processed … out of …` every N images, plus once at the last image if not aligned.
     const INGEST_PROGRESS_EVERY: usize = 30;
 
     for (i, path) in paths.into_iter().enumerate() {
+        if is_cancelled() {
+            eprintln!("texture_tool: cancelled during ingestion at image {}/{n_scanned}", i + 1);
+            return Err(ExitCode::from(EXIT_CANCELLED));
+        }
+
         let ingest_ix = i + 1;
         match hash_cache.digest_for_path(&path) {
             Ok(digest) => {
@@ -168,29 +179,54 @@ fn run() -> Result<(), ExitCode> {
         ingest_start.elapsed().as_secs_f64()
     );
 
+    if is_cancelled() {
+        eprintln!("texture_tool: cancelled before pairwise");
+        return Err(ExitCode::from(EXIT_CANCELLED));
+    }
+
     let n = vertices.len();
+
+    let (hash_edges, digest_rep) = build_hash_groups(&vertices);
+    if !hash_edges.is_empty() {
+        let n_dup_groups = digest_rep
+            .iter()
+            .enumerate()
+            .filter(|(i, r)| **r != *i)
+            .count();
+        eprintln!(
+            "texture_tool: {} hash-equal pairs from {n_dup_groups} duplicate vertices",
+            hash_edges.len(),
+        );
+    }
 
     let n_pairs: u128 = if n >= 2 {
         (n as u128) * ((n - 1) as u128) / 2
     } else {
         0
     };
+    let n_hash_pairs = hash_edges.len() as u128;
     eprintln!(
-        "texture_tool: pairwise start: n={n} pairs={n_pairs} threads={threads}"
+        "texture_tool: pairwise start: n={n} total_pairs={n_pairs} hash_pairs={n_hash_pairs} threads={threads}"
     );
     let pairwise_start = Instant::now();
-    let stats = pairwise::pairwise_compare(&cfg, &vertices, threads);
+    let stats = pairwise::pairwise_compare(&cfg, &vertices, threads, &digest_rep);
+
+    if is_cancelled() {
+        eprintln!("texture_tool: cancelled during pairwise");
+        return Err(ExitCode::from(EXIT_CANCELLED));
+    }
+
     eprintln!(
         "texture_tool: pairwise done in {:.2}s: hash_edges={} composite_edges={} score_cache={}",
         pairwise_start.elapsed().as_secs_f64(),
-        stats.hash_edges.len(),
+        hash_edges.len(),
         stats.composite_edges.len(),
         stats.score_cache.len(),
     );
 
     let group_indices = clustering::build_groups(
         n,
-        &stats.hash_edges,
+        &hash_edges,
         &stats.composite_edges,
         &vertices,
     );
@@ -232,6 +268,32 @@ fn run() -> Result<(), ExitCode> {
 
     eprintln!("wrote {}", args.output.display());
     Ok(())
+}
+
+fn build_hash_groups(vertices: &[Vertex]) -> (Vec<(usize, usize)>, Vec<usize>) {
+    let mut groups: HashMap<Vec<u8>, Vec<usize>> = HashMap::new();
+    for (i, v) in vertices.iter().enumerate() {
+        groups.entry(v.digest.clone()).or_default().push(i);
+    }
+
+    let mut hash_edges = Vec::new();
+    let mut rep: Vec<usize> = (0..vertices.len()).collect();
+
+    for members in groups.values() {
+        if members.len() >= 2 {
+            let first = members[0];
+            for &m in members {
+                rep[m] = first;
+            }
+            for ai in 0..members.len() {
+                for bi in (ai + 1)..members.len() {
+                    hash_edges.push((members[ai], members[bi]));
+                }
+            }
+        }
+    }
+
+    (hash_edges, rep)
 }
 
 fn canonical_path_string(p: &Path) -> Result<String, std::io::Error> {

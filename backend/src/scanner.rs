@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
@@ -7,10 +8,11 @@ const ALLOWED_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff", "tif",
 ];
 
-/// Recursively collect image paths under `root`. Symlinks are not followed (directories are not descended via symlinks; symlink files are skipped when detected).
-/// Paths are sorted lexicographically by their UTF-8 lossy string for stable ordering.
+/// Recursively collect image paths under `root`. Symlinks are not followed;
+/// paths are canonicalized and deduplicated to prevent the same physical file
+/// from appearing as multiple vertices. Sorted lexicographically by lossy UTF-8.
 pub fn scan_images(root: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
+    let mut raw = Vec::new();
     let walker = WalkDir::new(root).follow_links(false).into_iter();
     for entry in walker {
         let entry = match entry {
@@ -36,7 +38,25 @@ pub fn scan_images(root: &Path) -> Vec<PathBuf> {
             continue;
         }
 
-        out.push(path.to_path_buf());
+        raw.push(path.to_path_buf());
+    }
+
+    let mut seen = HashSet::new();
+    let mut out = Vec::with_capacity(raw.len());
+    for path in raw {
+        match std::fs::canonicalize(&path) {
+            Ok(c) => {
+                if seen.insert(c.clone()) {
+                    out.push(c);
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "scanner: skip (canonicalize): {}: {e}",
+                    path.display()
+                );
+            }
+        }
     }
 
     out.sort_by(|a, b| a.to_string_lossy().cmp(&b.to_string_lossy()));
@@ -66,7 +86,30 @@ mod tests {
 
         let paths = scan_images(dir.path());
         assert_eq!(paths.len(), 2);
-        assert!(paths[0].ends_with("a.jpg"));
-        assert!(paths[1].ends_with("b.png"));
+        assert!(paths[0].to_string_lossy().ends_with("a.jpg"));
+        assert!(paths[1].to_string_lossy().ends_with("b.png"));
+    }
+
+    #[test]
+    fn canonicalizes_paths() {
+        let dir = tempdir().unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("a.png"), b"hello").unwrap();
+
+        let link = dir.path().join("link");
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&sub, &link).unwrap();
+        }
+
+        let paths_main = scan_images(&sub);
+        assert_eq!(paths_main.len(), 1);
+
+        #[cfg(unix)]
+        {
+            let paths_link = scan_images(&link);
+            assert_eq!(paths_link.len(), 1);
+        }
     }
 }
