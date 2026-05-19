@@ -60,21 +60,16 @@ pub fn build_groups(
         buckets.entry(r).or_default().push(i);
     }
 
+    let path_strs: Vec<String> = vertices
+        .iter()
+        .map(|v| v.path.to_string_lossy().into_owned())
+        .collect();
+
     let mut groups: Vec<Vec<usize>> = buckets.into_values().collect();
     for g in &mut groups {
-        g.sort_by(|a, b| {
-            vertices[*a]
-                .path
-                .to_string_lossy()
-                .cmp(&vertices[*b].path.to_string_lossy())
-        });
+        g.sort_by(|a, b| path_strs[*a].cmp(&path_strs[*b]));
     }
-    groups.sort_by(|ga, gb| {
-        vertices[ga[0]]
-            .path
-            .to_string_lossy()
-            .cmp(&vertices[gb[0]].path.to_string_lossy())
-    });
+    groups.sort_by(|ga, gb| path_strs[ga[0]].cmp(&path_strs[gb[0]]));
     groups
 }
 

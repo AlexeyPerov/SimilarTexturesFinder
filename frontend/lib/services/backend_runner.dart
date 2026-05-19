@@ -3,17 +3,34 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-Process? _activeTextureToolProcess;
+class ScanSession {
+  Process? _process;
 
-/// Terminates a running `texture_tool` child, if any (e.g. app quit during scan).
-void killActiveTextureTool() {
-  final p0 = _activeTextureToolProcess;
-  if (p0 == null) return;
-  try {
-    p0.kill(ProcessSignal.sigkill);
-  } catch (_) {}
-  _activeTextureToolProcess = null;
+  bool get isRunning => _process != null;
+
+  void attach(Process p) {
+    _process = p;
+  }
+
+  void kill() {
+    final p0 = _process;
+    if (p0 == null) return;
+    try {
+      p0.kill(ProcessSignal.sigkill);
+    } catch (_) {}
+    _process = null;
+  }
+
+  void detach(Process p) {
+    if (_process == p) {
+      _process = null;
+    }
+  }
 }
+
+final ScanSession globalScanSession = ScanSession();
+
+void killActiveTextureTool() => globalScanSession.kill();
 
 /// Result of spawning `texture_tool`.
 class BackendRunResult {
@@ -142,7 +159,7 @@ Future<BackendRunResult> runTextureTool({
 
   late final int exitCode;
   try {
-    _activeTextureToolProcess = process;
+    globalScanSession.attach(process);
     await Future.wait<void>([
       drain(process.stdout, stdoutBuf, false),
       drain(process.stderr, stderrBuf, true),
@@ -151,9 +168,7 @@ Future<BackendRunResult> runTextureTool({
       }),
     ]);
   } finally {
-    if (_activeTextureToolProcess == process) {
-      _activeTextureToolProcess = null;
-    }
+    globalScanSession.detach(process);
   }
 
   return BackendRunResult(

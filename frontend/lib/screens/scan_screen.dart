@@ -231,7 +231,7 @@ class _ScanScreenState extends State<ScanScreen> {
       if (res.success) {
         if (!mounted) return;
         await diagnosticLog('scan_phase', data: {'phase': 'before_parse'});
-        final parsed = ScanResult.parseFile(outFile);
+        final parsed = await ScanResult.parseFileAsync(outFile);
         await diagnosticLog('scan_phase', data: {
           'phase': 'parse_ok',
           'groups': parsed.groups.length,
@@ -325,7 +325,16 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
           if (_running) ...[
             const SizedBox(height: 8),
-            const LinearProgressIndicator(),
+            Row(
+              children: [
+                const Expanded(child: LinearProgressIndicator()),
+                const SizedBox(width: 12),
+                OutlinedButton(
+                  onPressed: () => killActiveTextureTool(),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
           ],
           const SizedBox(height: 16),
           Text('Log', style: Theme.of(context).textTheme.titleMedium),

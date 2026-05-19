@@ -59,8 +59,12 @@ pub fn scan_images(root: &Path) -> Vec<PathBuf> {
         }
     }
 
-    out.sort_by(|a, b| a.to_string_lossy().cmp(&b.to_string_lossy()));
-    out
+    let mut tagged: Vec<(String, PathBuf)> = out
+        .into_iter()
+        .map(|p| (p.to_string_lossy().into_owned(), p))
+        .collect();
+    tagged.sort_by(|a, b| a.0.cmp(&b.0));
+    tagged.into_iter().map(|(_, p)| p).collect()
 }
 
 fn extension_allowed(path: &Path) -> bool {

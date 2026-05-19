@@ -26,8 +26,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
     }
   }
 
-  List<ResultGroup> _visibleGroups(List<ResultGroup> raw) {
-    if (!widget.appState.hideSingletonResultGroups) return raw;
+  List<ResultGroup> _visibleGroups(List<ResultGroup> raw, bool hideSingletons) {
+    if (!hideSingletons) return raw;
     return raw.where((g) => g.images.length >= 2).toList();
   }
 
@@ -36,6 +36,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
     return ListenableBuilder(
       listenable: widget.appState,
       builder: (context, _) {
+        final hideSingletons = widget.appState.hideSingletonResultGroups;
         final data = widget.appState.lastScanResult;
         final path = widget.appState.lastResultPath;
 
@@ -53,7 +54,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
           );
         }
 
-        final visible = _visibleGroups(data.groups);
+        final visible = _visibleGroups(data.groups, hideSingletons);
         if (visible.isEmpty) {
           return const Center(
             child: Padding(
@@ -197,6 +198,8 @@ class _ThumbTile extends StatelessWidget {
       child: Image.file(
         file,
         fit: BoxFit.cover,
+        cacheWidth: 256,
+        cacheHeight: 256,
         errorBuilder: (context, error, stackTrace) =>
             _placeholder(context, Icons.error_outline, 'Error'),
         frameBuilder: (ctx, child, frame, w) {

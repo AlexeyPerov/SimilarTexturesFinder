@@ -59,32 +59,32 @@ pub(crate) fn score_luma(luma_a: &[f32], luma_b: &[f32], min_ssim: f64) -> Metri
 }
 
 fn global_ssim(x: &[f32], y: &[f32]) -> f32 {
-    let n = x.len() as f32;
+    let n = x.len() as f64;
     if n == 0.0 {
         return f32::NAN;
     }
 
-    let mx = x.iter().copied().sum::<f32>() / n;
-    let my = y.iter().copied().sum::<f32>() / n;
-    let vx = x.iter().map(|&v| (v - mx) * (v - mx)).sum::<f32>() / n;
-    let vy = y.iter().map(|&v| (v - my) * (v - my)).sum::<f32>() / n;
+    let mx = x.iter().map(|&v| f64::from(v)).sum::<f64>() / n;
+    let my = y.iter().map(|&v| f64::from(v)).sum::<f64>() / n;
+    let vx = x.iter().map(|&v| (f64::from(v) - mx).powi(2)).sum::<f64>() / n;
+    let vy = y.iter().map(|&v| (f64::from(v) - my).powi(2)).sum::<f64>() / n;
     let vxy = x
         .iter()
         .zip(y.iter())
-        .map(|(&a, &b)| (a - mx) * (b - my))
-        .sum::<f32>()
+        .map(|(&a, &b)| (f64::from(a) - mx) * (f64::from(b) - my))
+        .sum::<f64>()
         / n;
 
-    let l = 255.0_f32;
-    let c1 = (0.01_f32 * l).powi(2);
-    let c2 = (0.03_f32 * l).powi(2);
+    let l = 255.0_f64;
+    let c1 = (0.01 * l).powi(2);
+    let c2 = (0.03 * l).powi(2);
 
     let num = (2.0 * mx * my + c1) * (2.0 * vxy + c2);
     let den = (mx * mx + my * my + c1) * (vx + vy + c2);
     if den == 0.0 {
         return f32::NAN;
     }
-    num / den
+    (num / den) as f32
 }
 
 #[cfg(test)]

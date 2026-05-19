@@ -15,15 +15,38 @@ pub fn group_scores(
     vertices: &[Vertex],
     cache: &HashMap<(usize, usize), f64>,
 ) -> Vec<Option<f64>> {
+    let digest_groups = build_digest_groups(vertices);
     groups
         .iter()
-        .map(|g| score_one_group(g, vertices, cache))
+        .map(|g| score_one_group(g, &digest_groups, cache))
         .collect()
+}
+
+fn build_digest_groups(vertices: &[Vertex]) -> HashMap<usize, usize> {
+    let mut digests_by_hash: HashMap<u64, Vec<usize>> = HashMap::new();
+    for (i, v) in vertices.iter().enumerate() {
+        use std::hash::Hasher;
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash_slice(&v.digest, &mut h);
+        digests_by_hash.entry(h.finish()).or_default().push(i);
+    }
+
+    let mut digest_eq: HashMap<usize, usize> = HashMap::new();
+    for (_, members) in digests_by_hash {
+        if members.len() >= 2 {
+            for &m in &members[1..] {
+                if vertices[m].digest == vertices[members[0]].digest {
+                    digest_eq.insert(m, members[0]);
+                }
+            }
+        }
+    }
+    digest_eq
 }
 
 fn score_one_group(
     g: &[usize],
-    vertices: &[Vertex],
+    digest_eq: &HashMap<usize, usize>,
     cache: &HashMap<(usize, usize), f64>,
 ) -> Option<f64> {
     if g.len() < 2 {
@@ -35,7 +58,9 @@ fn score_one_group(
         for bi in (ai + 1)..g.len() {
             let i = g[ai];
             let j = g[bi];
-            let s = if vertices[i].digest == vertices[j].digest {
+            let s = if digest_eq.get(&i).map_or(false, |r| *r == j)
+                || digest_eq.get(&j).map_or(false, |r| *r == i)
+            {
                 Some(1.0)
             } else {
                 cache.get(&pair_key(i, j)).copied()

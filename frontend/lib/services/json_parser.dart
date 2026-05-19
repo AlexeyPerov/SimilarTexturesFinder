@@ -25,6 +25,11 @@ class ScanResult {
     return parseString(text);
   }
 
+  static Future<ScanResult> parseFileAsync(String path) async {
+    final text = await File(path).readAsString();
+    return parseString(text);
+  }
+
   static ScanResult parseString(String jsonText) {
     final decoded = jsonDecode(jsonText);
     if (decoded is! Map<String, dynamic>) {
