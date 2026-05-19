@@ -1,18 +1,12 @@
-//! Similarity metrics: shared result type and [`SimilarityMetric`] trait
-//! ([Task_similarity_appendix.md](../../Tasks/Task_similarity_appendix.md) §A–§B).
-//!
-//! When `MetricResult::valid` is false, `score` is not meaningful. When `valid` is true,
-//! `score` is a similarity in `[0.0, 1.0]` (1.0 = identical per method).
-
 #![allow(unused_imports)]
 
-mod composite;
-mod histogram;
-mod phash;
-mod prepare;
-mod rotations;
-mod ssim;
-mod types;
+pub(crate) mod composite;
+pub(crate) mod histogram;
+pub(crate) mod phash;
+pub(crate) mod prepare;
+pub(crate) mod rotations;
+pub(crate) mod ssim;
+pub(crate) mod types;
 
 pub use crate::image_loader::ImageData;
 pub use composite::combine;

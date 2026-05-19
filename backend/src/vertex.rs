@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use crate::image_loader::ImageData;
+use crate::features::Features;
 
 pub struct Vertex {
     pub path: PathBuf,
     pub digest: Vec<u8>,
-    pub prepared: Option<ImageData>,
+    pub features: Option<Features>,
 }

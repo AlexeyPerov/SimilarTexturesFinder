@@ -16,6 +16,7 @@ use std::time::Instant;
 
 use clap::Parser;
 
+use crate::features::extract::extract_features;
 use crate::image_loader::ImageData;
 use crate::similarity::prepare_vertex;
 use crate::vertex::Vertex;
@@ -111,13 +112,19 @@ fn run() -> Result<(), ExitCode> {
         let ingest_ix = i + 1;
         match hash_cache.digest_for_path(&path) {
             Ok(digest) => {
-                let prepared = match ImageData::decode_path(&path, cfg.max_decode_dimension_px) {
+                let features = match ImageData::decode_path(&path, cfg.max_decode_dimension_px) {
                     Ok(ref img) => {
                         n_decode_ok += 1;
                         match prepare_vertex(img, &cfg) {
-                            Ok(p) => {
+                            Ok(prepared) => {
                                 n_prepare_ok += 1;
-                                Some(p)
+                                match extract_features(&prepared, &cfg) {
+                                    Ok(f) => Some(f),
+                                    Err(e) => {
+                                        eprintln!("features {}: {e}", path.display());
+                                        None
+                                    }
+                                }
                             }
                             Err(e) => {
                                 eprintln!("prepare {}: {e}", path.display());
@@ -133,7 +140,7 @@ fn run() -> Result<(), ExitCode> {
                 vertices.push(Vertex {
                     path,
                     digest,
-                    prepared,
+                    features,
                 });
             }
             Err(e) => {

@@ -6,6 +6,7 @@ use crate::similarity::prepare::resize_square_rgba;
 use crate::similarity::types::{MetricResult, SimilarityMetric};
 
 #[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
 pub struct HistogramMetric {
     pub resize: u32,
     pub bins: u32,
@@ -19,6 +20,7 @@ pub enum HistMethod {
 }
 
 impl HistogramMetric {
+    #[allow(dead_code)]
     pub fn from_config(cfg: &Config) -> Self {
         let bins = histogram_bins_per_channel(cfg.hist_bins);
         let method = parse_method(&cfg.hist_method);
@@ -35,6 +37,10 @@ fn parse_method(s: &str) -> HistMethod {
         "bhattacharyya" | "bhat" | "bhatt" => HistMethod::Bhattacharyya,
         _ => HistMethod::Correlation,
     }
+}
+
+pub(crate) fn parse_hist_method(s: &str) -> HistMethod {
+    parse_method(s)
 }
 
 pub fn histogram_bins_per_channel(hist_bins: u32) -> u32 {
@@ -57,35 +63,43 @@ impl SimilarityMetric for HistogramMetric {
         let ha = build_rgb_hist(&ra, self.bins);
         let hb = build_rgb_hist(&rb, self.bins);
 
-        match self.method {
-            HistMethod::Bhattacharyya => {
-                let bc: f32 = ha
-                    .iter()
-                    .zip(hb.iter())
-                    .map(|(&a, &b)| a.sqrt() * b.sqrt())
-                    .sum();
-                let bc = bc.clamp(0.0, 1.0);
-                MetricResult {
-                    score: bc,
-                    raw: bc,
-                    valid: true,
-                }
+        score_hist(&ha, &hb, self.method)
+    }
+}
+
+pub(crate) fn build_hist(img: &RgbaImage, bins: u32) -> Vec<f32> {
+    build_rgb_hist(img, bins)
+}
+
+pub(crate) fn score_hist(ha: &[f32], hb: &[f32], method: HistMethod) -> MetricResult {
+    match method {
+        HistMethod::Bhattacharyya => {
+            let bc: f32 = ha
+                .iter()
+                .zip(hb.iter())
+                .map(|(&a, &b)| a.sqrt() * b.sqrt())
+                .sum();
+            let bc = bc.clamp(0.0, 1.0);
+            MetricResult {
+                score: bc,
+                raw: bc,
+                valid: true,
             }
-            HistMethod::Correlation => {
-                let score = pearson_similarity(&ha, &hb);
-                if !score.is_finite() {
-                    MetricResult {
-                        score: 0.0,
-                        raw: 0.0,
-                        valid: false,
-                    }
-                } else {
-                    let s = ((score + 1.0) * 0.5).clamp(0.0, 1.0);
-                    MetricResult {
-                        score: s,
-                        raw: score,
-                        valid: true,
-                    }
+        }
+        HistMethod::Correlation => {
+            let score = pearson_similarity(ha, hb);
+            if !score.is_finite() {
+                MetricResult {
+                    score: 0.0,
+                    raw: 0.0,
+                    valid: false,
+                }
+            } else {
+                let s = ((score + 1.0) * 0.5).clamp(0.0, 1.0);
+                MetricResult {
+                    score: s,
+                    raw: score,
+                    valid: true,
                 }
             }
         }

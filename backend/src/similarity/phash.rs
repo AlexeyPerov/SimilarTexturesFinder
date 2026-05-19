@@ -8,64 +8,64 @@ const PHASH_LOW: usize = 8;
 
 /// pHash per appendix §C.2: grayscale → 32×32 → DCT → 8×8 low block → median → 64-bit hash.
 #[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
 pub struct PHashMetric {
     pub max_hamming_distance: u32,
 }
 
 impl PHashMetric {
+    #[allow(dead_code)]
     pub fn from_config(cfg: &crate::config::Config) -> Self {
         Self {
             max_hamming_distance: cfg.phash_max_distance,
         }
     }
+}
 
-    fn hash64(img: &ImageData) -> u64 {
-        let luma = resize_luma_32(img);
-        let dct = dct_2d_32(&luma);
-        let mut block = [0f32; 64];
-        let mut k = 0;
-        for y in 0..PHASH_LOW {
-            for x in 0..PHASH_LOW {
-                block[k] = dct[y * 32 + x];
-                k += 1;
-            }
+pub(crate) fn compute_hash(img: &ImageData) -> u64 {
+    let luma = resize_luma_32(img);
+    let dct = dct_2d_32(&luma);
+    let mut block = [0f32; 64];
+    let mut k = 0;
+    for y in 0..PHASH_LOW {
+        for x in 0..PHASH_LOW {
+            block[k] = dct[y * 32 + x];
+            k += 1;
         }
-        let median = median_64(&block);
-        let mut bits: u64 = 0;
-        for (i, &v) in block.iter().enumerate() {
-            if v > median {
-                bits |= 1u64 << i;
-            }
-        }
-        bits
     }
+    let median = median_64(&block);
+    let mut bits: u64 = 0;
+    for (i, &v) in block.iter().enumerate() {
+        if v > median {
+            bits |= 1u64 << i;
+        }
+    }
+    bits
+}
 
-    fn score_from_hashes(a: u64, b: u64, max_dist: u32) -> MetricResult {
-        let dist = (a ^ b).count_ones() as f32;
-        let mut score = 1.0 - (dist / 64.0);
-        if dist > max_dist as f32 {
-            score = 0.0;
-        }
-        MetricResult {
-            score,
-            raw: dist,
-            valid: true,
-        }
+pub(crate) fn score_hashes(a: u64, b: u64, max_dist: u32) -> MetricResult {
+    let dist = (a ^ b).count_ones() as f32;
+    let mut score = 1.0 - (dist / 64.0);
+    if dist > max_dist as f32 {
+        score = 0.0;
+    }
+    MetricResult {
+        score,
+        raw: dist,
+        valid: true,
     }
 }
 
 impl SimilarityMetric for PHashMetric {
     fn compute(&self, img_a: &ImageData, img_b: &ImageData) -> MetricResult {
-        let (w, h) = (img_a.width, img_a.height);
-        if w == 0 || h == 0 {
+        if img_a.width == 0 || img_a.height == 0 {
             return MetricResult {
                 score: 0.0,
                 raw: 0.0,
                 valid: false,
             };
         }
-        let (w2, h2) = (img_b.width, img_b.height);
-        if w2 == 0 || h2 == 0 {
+        if img_b.width == 0 || img_b.height == 0 {
             return MetricResult {
                 score: 0.0,
                 raw: 0.0,
@@ -73,9 +73,9 @@ impl SimilarityMetric for PHashMetric {
             };
         }
 
-        let ha = Self::hash64(img_a);
-        let hb = Self::hash64(img_b);
-        Self::score_from_hashes(ha, hb, self.max_hamming_distance)
+        let ha = compute_hash(img_a);
+        let hb = compute_hash(img_b);
+        score_hashes(ha, hb, self.max_hamming_distance)
     }
 }
 

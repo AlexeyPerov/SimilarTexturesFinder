@@ -4,12 +4,14 @@ use crate::similarity::types::{MetricResult, SimilarityMetric};
 
 /// Global (single-window) SSIM on 8-bit luma scale ([Task_similarity_appendix.md](../../../Tasks/Task_similarity_appendix.md) §C.3).
 #[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
 pub struct SsimMetric {
     pub resize: u32,
     pub min_ssim: f64,
 }
 
 impl SsimMetric {
+    #[allow(dead_code)]
     pub fn from_config(cfg: &crate::config::Config) -> Self {
         Self {
             resize: cfg.resize_size,
@@ -33,22 +35,26 @@ impl SimilarityMetric for SsimMetric {
         let xa = luma_plane(&ra);
         let xb = luma_plane(&rb);
 
-        let s = global_ssim(&xa, &xb);
-        if !s.is_finite() {
-            return MetricResult {
-                score: 0.0,
-                raw: 0.0,
-                valid: false,
-            };
-        }
+        score_luma(&xa, &xb, self.min_ssim)
+    }
+}
 
-        let score = s.clamp(0.0, 1.0);
-        let valid = score >= self.min_ssim as f32;
-        MetricResult {
-            score,
-            raw: score,
-            valid,
-        }
+pub(crate) fn score_luma(luma_a: &[f32], luma_b: &[f32], min_ssim: f64) -> MetricResult {
+    let s = global_ssim(luma_a, luma_b);
+    if !s.is_finite() {
+        return MetricResult {
+            score: 0.0,
+            raw: 0.0,
+            valid: false,
+        };
+    }
+
+    let score = s.clamp(0.0, 1.0);
+    let valid = score >= min_ssim as f32;
+    MetricResult {
+        score,
+        raw: score,
+        valid,
     }
 }
 

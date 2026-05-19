@@ -7,6 +7,7 @@ use crate::similarity::types::{MetricResult, SimilarityMetric};
 ///
 /// When `enable_rotations`: 0°, 90°, 180°, 270°. When `enable_flip`: additionally horizontal flip,
 /// vertical flip, flip then 90°, flip then 180°, flip then 270° (8 transforms when both on: 4 rotations + 4 flipped rotations; flips alone add h/v flips when rotations off).
+#[allow(dead_code)]
 pub fn max_over_b<M: SimilarityMetric + ?Sized>(
     metric: &M,
     img_a: &ImageData,
