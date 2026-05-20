@@ -19,3 +19,6 @@ tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 similar-textures-core = { path = "crates/similar-textures-core" }
 
+[dev-dependencies]
+tempfile = "3"
+

@@ -35,6 +35,19 @@
     max_decode_dimension_px: number | null;
   };
 
+  type SettingsValidationErrors = {
+    threshold?: string;
+    phashWeight?: string;
+    ssimWeight?: string;
+    histogramWeight?: string;
+    phashMaxDistance?: string;
+    ssimThreshold?: string;
+    resizeSize?: string;
+    histBins?: string;
+    alphaThreshold?: string;
+    maxDecodeDimension?: string;
+  };
+
   type ScanGroup = {
     id: number;
     score: number | null;
@@ -99,8 +112,9 @@
   let result = $state<ScanResult | null>(null);
   let saveMessage = $state("");
   let loadError = $state("");
+  let settingsErrors = $state<SettingsValidationErrors>({});
 
-  let settings = $state<AppSettings>({
+  const initialSettings: AppSettings = {
     enable_phash: true,
     enable_ssim: true,
     enable_histogram: true,
@@ -120,11 +134,56 @@
     orb_max_features: null,
     orb_match_threshold: null,
     max_decode_dimension_px: null,
-  });
+  };
+  let settings = $state<AppSettings>(structuredClone(initialSettings));
+  let settingsDraft = $state<AppSettings>(structuredClone(initialSettings));
 
   function resetMessages() {
     saveMessage = "";
     loadError = "";
+    settingsErrors = {};
+  }
+
+  function cloneSettings(next: AppSettings): AppSettings {
+    return structuredClone(next);
+  }
+
+  function validateSettings(next: AppSettings): SettingsValidationErrors {
+    const errors: SettingsValidationErrors = {};
+    if (next.threshold < 0 || next.threshold > 1) {
+      errors.threshold = "Threshold must be between 0 and 1.";
+    }
+    if (next.weights.phash < 0) {
+      errors.phashWeight = "pHash weight cannot be negative.";
+    }
+    if (next.weights.ssim < 0) {
+      errors.ssimWeight = "SSIM weight cannot be negative.";
+    }
+    if (next.weights.histogram < 0) {
+      errors.histogramWeight = "Histogram weight cannot be negative.";
+    }
+    if (next.phash_max_distance < 0) {
+      errors.phashMaxDistance = "pHash max distance cannot be negative.";
+    }
+    if (next.ssim_threshold < 0 || next.ssim_threshold > 1) {
+      errors.ssimThreshold = "SSIM threshold must be between 0 and 1.";
+    }
+    if (next.resize_size < 1) {
+      errors.resizeSize = "Resize size must be at least 1.";
+    }
+    if (next.hist_bins < 2) {
+      errors.histBins = "Histogram bins must be at least 2.";
+    }
+    if (next.alpha_threshold < 0 || next.alpha_threshold > 1) {
+      errors.alphaThreshold = "Alpha threshold must be between 0 and 1.";
+    }
+    if (next.max_decode_dimension_px != null && next.max_decode_dimension_px < 1) {
+      errors.maxDecodeDimension = "Max decode dimension must be at least 1.";
+    }
+    if (!next.enable_phash && !next.enable_ssim && !next.enable_histogram) {
+      errors.threshold = "Enable at least one metric (pHash, SSIM, or histogram).";
+    }
+    return errors;
   }
 
   function appendLog(line: string) {
@@ -154,15 +213,35 @@
     resetMessages();
     try {
       settings = await invoke<AppSettings>("load_settings");
+      settingsDraft = cloneSettings(settings);
     } catch (e) {
       loadError = `Failed to load settings: ${String(e)}`;
     }
   }
 
+  function openSettings() {
+    resetMessages();
+    settingsDraft = cloneSettings(settings);
+    showSettings = true;
+  }
+
+  function cancelSettings() {
+    resetMessages();
+    settingsDraft = cloneSettings(settings);
+    showSettings = false;
+  }
+
   async function saveSettings() {
     resetMessages();
+    const errors = validateSettings(settingsDraft);
+    settingsErrors = errors;
+    if (Object.keys(errors).length > 0) {
+      loadError = "Fix validation errors before saving.";
+      return;
+    }
     try {
-      await invoke("save_settings", { settings });
+      await invoke("save_settings", { settings: settingsDraft });
+      settings = cloneSettings(settingsDraft);
       saveMessage = "Settings saved";
       showSettings = false;
     } catch (e) {
@@ -339,10 +418,7 @@
         class="settings-btn"
         title="Settings"
         aria-label="Open settings"
-        onclick={() => {
-          resetMessages();
-          showSettings = true;
-        }}
+        onclick={() => openSettings()}
       >
         <svg
           width="18"
@@ -508,7 +584,7 @@
         if (e.target === e.currentTarget) showSettings = false;
       }}
       onkeydown={(e) => {
-        if (e.key === "Escape" || e.key === "Enter" || e.key === " ") showSettings = false;
+        if (e.key === "Escape" || e.key === "Enter" || e.key === " ") cancelSettings();
       }}
     >
       <div class="modal">
@@ -518,7 +594,7 @@
             type="button"
             class="modal-close-btn"
             aria-label="Close settings"
-            onclick={() => (showSettings = false)}
+            onclick={() => cancelSettings()}
           >
             <svg
               width="16"
@@ -538,41 +614,68 @@
 
         <div class="modal-body">
           <div class="settings-grid">
-            <label><input type="checkbox" bind:checked={settings.enable_phash} /> Enable pHash</label>
-            <label><input type="checkbox" bind:checked={settings.enable_ssim} /> Enable SSIM</label>
             <label>
-              <input type="checkbox" bind:checked={settings.enable_histogram} />
+              <input type="checkbox" bind:checked={settingsDraft.enable_phash} />
+              Enable pHash
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={settingsDraft.enable_ssim} />
+              Enable SSIM
+            </label>
+            <label>
+              <input type="checkbox" bind:checked={settingsDraft.enable_histogram} />
               Enable histogram
             </label>
             <label>
-              <input type="checkbox" bind:checked={settings.enable_alpha_crop} />
+              <input type="checkbox" bind:checked={settingsDraft.enable_alpha_crop} />
               Enable alpha crop
             </label>
             <label>
-              <input type="checkbox" bind:checked={settings.enable_rotations} />
+              <input type="checkbox" bind:checked={settingsDraft.enable_rotations} />
               Enable rotations
             </label>
-            <label><input type="checkbox" bind:checked={settings.enable_flip} /> Enable flip</label>
+            <label><input type="checkbox" bind:checked={settingsDraft.enable_flip} /> Enable flip</label>
 
             <label>
               Threshold
-              <input type="number" step="0.01" min="0" max="1" bind:value={settings.threshold} />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                bind:value={settingsDraft.threshold}
+              />
+              {#if settingsErrors.threshold}<span class="field-error">{settingsErrors.threshold}</span>{/if}
             </label>
             <label>
               pHash weight
-              <input type="number" step="0.01" min="0" bind:value={settings.weights.phash} />
+              <input type="number" step="0.01" min="0" bind:value={settingsDraft.weights.phash} />
+              {#if settingsErrors.phashWeight}
+                <span class="field-error">{settingsErrors.phashWeight}</span>
+              {/if}
             </label>
             <label>
               SSIM weight
-              <input type="number" step="0.01" min="0" bind:value={settings.weights.ssim} />
+              <input type="number" step="0.01" min="0" bind:value={settingsDraft.weights.ssim} />
+              {#if settingsErrors.ssimWeight}
+                <span class="field-error">{settingsErrors.ssimWeight}</span>
+              {/if}
             </label>
             <label>
               Histogram weight
-              <input type="number" step="0.01" min="0" bind:value={settings.weights.histogram} />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                bind:value={settingsDraft.weights.histogram}
+              />
+              {#if settingsErrors.histogramWeight}
+                <span class="field-error">{settingsErrors.histogramWeight}</span>
+              {/if}
             </label>
             <label>
               Hash algorithm
-              <select bind:value={settings.hash_algorithm}>
+              <select bind:value={settingsDraft.hash_algorithm}>
                 <option value="sha256">sha256</option>
                 <option value="sha1">sha1</option>
                 <option value="md5">md5</option>
@@ -580,42 +683,68 @@
             </label>
             <label>
               pHash max distance
-              <input type="number" min="0" bind:value={settings.phash_max_distance} />
+              <input type="number" min="0" bind:value={settingsDraft.phash_max_distance} />
+              {#if settingsErrors.phashMaxDistance}
+                <span class="field-error">{settingsErrors.phashMaxDistance}</span>
+              {/if}
             </label>
             <label>
               SSIM threshold
-              <input type="number" step="0.01" min="0" max="1" bind:value={settings.ssim_threshold} />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                bind:value={settingsDraft.ssim_threshold}
+              />
+              {#if settingsErrors.ssimThreshold}
+                <span class="field-error">{settingsErrors.ssimThreshold}</span>
+              {/if}
             </label>
             <label>
               Resize size
-              <input type="number" min="1" bind:value={settings.resize_size} />
+              <input type="number" min="1" bind:value={settingsDraft.resize_size} />
+              {#if settingsErrors.resizeSize}<span class="field-error">{settingsErrors.resizeSize}</span>{/if}
             </label>
             <label>
               Histogram bins
-              <input type="number" min="2" bind:value={settings.hist_bins} />
+              <input type="number" min="2" bind:value={settingsDraft.hist_bins} />
+              {#if settingsErrors.histBins}<span class="field-error">{settingsErrors.histBins}</span>{/if}
             </label>
             <label>
               Histogram method
-              <select bind:value={settings.hist_method}>
+              <select bind:value={settingsDraft.hist_method}>
                 <option value="correlation">correlation</option>
                 <option value="bhattacharyya">bhattacharyya</option>
               </select>
             </label>
             <label>
               Alpha threshold
-              <input type="number" step="0.01" min="0" max="1" bind:value={settings.alpha_threshold} />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                bind:value={settingsDraft.alpha_threshold}
+              />
+              {#if settingsErrors.alphaThreshold}
+                <span class="field-error">{settingsErrors.alphaThreshold}</span>
+              {/if}
             </label>
             <label>
               Max decode dimension (optional)
               <input
                 type="number"
                 min="1"
-                value={settings.max_decode_dimension_px ?? ""}
+                value={settingsDraft.max_decode_dimension_px ?? ""}
                 oninput={(e) => {
                   const v = (e.currentTarget as HTMLInputElement).value.trim();
-                  settings.max_decode_dimension_px = v ? Number(v) : null;
+                  settingsDraft.max_decode_dimension_px = v ? Number(v) : null;
                 }}
               />
+              {#if settingsErrors.maxDecodeDimension}
+                <span class="field-error">{settingsErrors.maxDecodeDimension}</span>
+              {/if}
             </label>
           </div>
 
@@ -628,7 +757,7 @@
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="action-btn secondary" onclick={() => (showSettings = false)}>
+          <button type="button" class="action-btn secondary" onclick={() => cancelSettings()}>
             Cancel
           </button>
           <button type="button" class="action-btn" onclick={() => void saveSettings()}>Save</button>
@@ -1114,6 +1243,12 @@
     margin: 0;
     color: #f0a8a8;
     font-size: 0.78rem;
+  }
+
+  .field-error {
+    color: #f0a8a8;
+    font-size: 0.72rem;
+    line-height: 1.2;
   }
 
   .modal-footer {

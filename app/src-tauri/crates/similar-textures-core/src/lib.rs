@@ -516,6 +516,28 @@ mod tests {
         assert!(text.contains("\"images\""));
     }
 
+    struct CancelImmediately;
+
+    impl ScanCallbacks for CancelImmediately {
+        fn is_cancelled(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn immediate_cancellation_returns_cancelled_status() {
+        let dir = tempdir().expect("tempdir");
+        let input_dir = dir.path().join("input");
+        fs::create_dir_all(&input_dir).expect("mkdir");
+        let cfg = default_cfg();
+        let req = ScanRequest {
+            input: input_dir,
+            threads: 2,
+        };
+        let outcome = run_scan(&cfg, &req, &CancelImmediately).expect("scan");
+        assert_eq!(outcome.status, ScanStatus::Cancelled);
+    }
+
     fn tiny_png_rgba(w: u32, h: u32, rgba: [u8; 4]) -> Vec<u8> {
         let mut img = image::RgbaImage::new(w, h);
         for p in img.pixels_mut() {

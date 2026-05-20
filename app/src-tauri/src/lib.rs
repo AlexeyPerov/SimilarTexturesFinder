@@ -11,6 +11,7 @@ use std::thread;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const SETTINGS_FILE: &str = "settings.json";
+const SETTINGS_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +50,20 @@ struct StartScanResponse {
 #[serde(rename_all = "camelCase")]
 struct ExportResponse {
     path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct StoredSettingsV1 {
+    version: u32,
+    config: Config,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+enum StoredSettingsFile {
+    V1(StoredSettingsV1),
+    Legacy(Config),
 }
 
 struct AppSlots {
@@ -123,6 +138,23 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir.join(SETTINGS_FILE))
+}
+
+fn load_settings_from_path(path: &Path) -> Result<Config, String> {
+    if !path.exists() {
+        return Ok(default_config());
+    }
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("could not read settings file {}: {e}", path.display()))?;
+    parse_stored_settings(&text)
+}
+
+fn save_settings_to_path(path: &Path, settings: &Config) -> Result<(), String> {
+    similar_textures_core::config::validate(settings)
+        .map_err(|e| format!("settings validation failed: {e}"))?;
+    let text = serialize_stored_settings(settings)?;
+    std::fs::write(path, text)
+        .map_err(|e| format!("could not write settings file {}: {e}", path.display()))
 }
 
 fn emit_log(app: &AppHandle, scan_id: u64, line: impl Into<String>, level: &str) {
@@ -341,21 +373,13 @@ impl ScanCallbacks for EventCallbacks {
 #[tauri::command]
 fn load_settings(app: AppHandle) -> Result<Config, String> {
     let path = settings_path(&app)?;
-    if !path.exists() {
-        return Ok(default_config());
-    }
-    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let cfg: Config = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    similar_textures_core::config::validate(&cfg).map_err(|e| e.to_string())?;
-    Ok(cfg)
+    load_settings_from_path(&path)
 }
 
 #[tauri::command]
 fn save_settings(app: AppHandle, settings: Config) -> Result<(), String> {
-    similar_textures_core::config::validate(&settings).map_err(|e| e.to_string())?;
     let path = settings_path(&app)?;
-    let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    std::fs::write(path, text).map_err(|e| e.to_string())
+    save_settings_to_path(&path, &settings)
 }
 
 #[tauri::command]
@@ -523,6 +547,35 @@ fn default_config() -> Config {
     .expect("valid embedded default config")
 }
 
+fn parse_stored_settings(text: &str) -> Result<Config, String> {
+    let parsed: StoredSettingsFile =
+        serde_json::from_str(text).map_err(|e| format!("settings file is invalid JSON: {e}"))?;
+    let cfg = match parsed {
+        StoredSettingsFile::V1(v1) => {
+            if v1.version != SETTINGS_SCHEMA_VERSION {
+                return Err(format!(
+                    "settings schema version {} is not supported (expected {})",
+                    v1.version, SETTINGS_SCHEMA_VERSION
+                ));
+            }
+            v1.config
+        }
+        StoredSettingsFile::Legacy(cfg) => cfg,
+    };
+    similar_textures_core::config::validate(&cfg)
+        .map_err(|e| format!("settings file is invalid: {e}"))?;
+    Ok(cfg)
+}
+
+fn serialize_stored_settings(cfg: &Config) -> Result<String, String> {
+    let wrapped = StoredSettingsV1 {
+        version: SETTINGS_SCHEMA_VERSION,
+        config: cfg.clone(),
+    };
+    serde_json::to_string_pretty(&wrapped)
+        .map_err(|e| format!("could not serialize settings payload: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -545,11 +598,82 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn default_config_is_valid() {
         let cfg = default_config();
         similar_textures_core::config::validate(&cfg).expect("default config must validate");
+    }
+
+    #[test]
+    fn parse_legacy_settings_shape() {
+        let cfg = default_config();
+        let text = serde_json::to_string(&cfg).expect("serialize");
+        let loaded = parse_stored_settings(&text).expect("parse");
+        assert_eq!(loaded.hash_algorithm, "sha256");
+        assert!((loaded.threshold - 0.85).abs() < 1e-9);
+    }
+
+    #[test]
+    fn serialize_and_parse_versioned_settings_shape() {
+        let cfg = default_config();
+        let text = serialize_stored_settings(&cfg).expect("serialize wrapped");
+        let loaded = parse_stored_settings(&text).expect("parse wrapped");
+        assert_eq!(loaded.hash_algorithm, cfg.hash_algorithm);
+        assert_eq!(loaded.phash_max_distance, cfg.phash_max_distance);
+    }
+
+    #[test]
+    fn reject_unsupported_settings_version() {
+        let cfg = default_config();
+        let payload = serde_json::json!({
+            "version": SETTINGS_SCHEMA_VERSION + 1,
+            "config": cfg
+        });
+        let text = serde_json::to_string(&payload).expect("json");
+        let err = parse_stored_settings(&text).expect_err("must reject");
+        assert!(err.contains("not supported"));
+    }
+
+    #[test]
+    fn reject_invalid_config_payload() {
+        let payload = serde_json::json!({
+            "version": SETTINGS_SCHEMA_VERSION,
+            "config": {
+                "enable_phash": false,
+                "enable_ssim": false,
+                "enable_histogram": false,
+                "threshold": 0.85,
+                "weights": { "phash": 0.35, "ssim": 0.45, "histogram": 0.2 }
+            }
+        });
+        let text = serde_json::to_string(&payload).expect("json");
+        let err = parse_stored_settings(&text).expect_err("must fail validation");
+        assert!(err.contains("at least one of enable_phash"));
+    }
+
+    #[test]
+    fn save_and_load_settings_path_roundtrip() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("settings.json");
+        let mut cfg = default_config();
+        cfg.threshold = 0.77;
+        save_settings_to_path(&path, &cfg).expect("save");
+        let loaded = load_settings_from_path(&path).expect("load");
+        assert!((loaded.threshold - 0.77).abs() < 1e-9);
+    }
+
+    #[test]
+    fn saved_settings_file_is_versioned_payload() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("settings.json");
+        let cfg = default_config();
+        save_settings_to_path(&path, &cfg).expect("save");
+        let text = std::fs::read_to_string(&path).expect("read");
+        let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        assert_eq!(value.get("version").and_then(|v| v.as_u64()), Some(1));
+        assert!(value.get("config").is_some());
     }
 }
 
