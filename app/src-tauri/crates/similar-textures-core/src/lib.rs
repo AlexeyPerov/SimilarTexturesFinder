@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use features::extract::extract_features;
 use image_loader::ImageData;
+use serde::{Deserialize, Serialize};
 use vertex::Vertex;
 
 pub const EXIT_CANCELLED: u8 = 2;
@@ -25,20 +26,20 @@ pub enum ScanStatus {
     Cancelled,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanRequest {
     pub input: PathBuf,
     pub threads: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanGroup {
     pub id: u32,
     pub score: Option<f64>,
     pub images: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
     pub groups: Vec<ScanGroup>,
 }

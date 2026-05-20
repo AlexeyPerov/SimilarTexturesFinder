@@ -1,8 +1,8 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::file_hash::HashAlgorithm;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub enable_phash: bool,
     pub enable_ssim: bool,
@@ -42,7 +42,7 @@ pub struct Config {
     pub max_decode_dimension_px: Option<u32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Weights {
     pub phash: f64,
     pub ssim: f64,
@@ -128,7 +128,7 @@ pub fn load_config(path: &std::path::Path) -> Result<Config, ConfigError> {
     Ok(cfg)
 }
 
-fn validate(cfg: &Config) -> Result<(), ConfigError> {
+pub fn validate(cfg: &Config) -> Result<(), ConfigError> {
     if !(0.0..=1.0).contains(&cfg.threshold) {
         return Err(ConfigError::ThresholdOutOfRange);
     }

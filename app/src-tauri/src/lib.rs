@@ -1,0 +1,555 @@
+use serde::{Deserialize, Serialize};
+use similar_textures_core::config::Config;
+use similar_textures_core::{
+    run_scan, write_result_json, ScanCallbacks, ScanEvent, ScanOutcome, ScanRequest,
+    ScanResult, ScanStatus,
+};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use tauri::{AppHandle, Emitter, Manager, State};
+
+const SETTINGS_FILE: &str = "settings.json";
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct StartScanRequest {
+    input_dir: String,
+    threads: Option<usize>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ExportRequest {
+    target_path: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ScanStatusResponse {
+    state: String,
+    active_scan_id: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LastResultResponse {
+    has_result: bool,
+    result: Option<ScanResult>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct StartScanResponse {
+    scan_id: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ExportResponse {
+    path: String,
+}
+
+struct AppSlots {
+    status: Mutex<ScanStatusValue>,
+    active_scan_id: AtomicU64,
+    scan_sequence: AtomicU64,
+    cancel_flag: Arc<AtomicBool>,
+    last_result: Mutex<Option<ScanResult>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ScanStatusValue {
+    Idle,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl ScanStatusValue {
+    fn as_str(self) -> &'static str {
+        match self {
+            ScanStatusValue::Idle => "idle",
+            ScanStatusValue::Running => "running",
+            ScanStatusValue::Completed => "completed",
+            ScanStatusValue::Failed => "failed",
+            ScanStatusValue::Cancelled => "cancelled",
+        }
+    }
+}
+
+impl Default for AppSlots {
+    fn default() -> Self {
+        Self {
+            status: Mutex::new(ScanStatusValue::Idle),
+            active_scan_id: AtomicU64::new(0),
+            scan_sequence: AtomicU64::new(0),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            last_result: Mutex::new(None),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ScanLogEventPayload {
+    scan_id: u64,
+    line: String,
+    level: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ScanProgressEventPayload {
+    scan_id: u64,
+    phase: String,
+    processed: Option<usize>,
+    total: Option<usize>,
+    vertices: Option<usize>,
+    groups: Option<usize>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ScanFinishedEventPayload {
+    scan_id: u64,
+    status: String,
+    message: Option<String>,
+}
+
+fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join(SETTINGS_FILE))
+}
+
+fn emit_log(app: &AppHandle, scan_id: u64, line: impl Into<String>, level: &str) {
+    let payload = ScanLogEventPayload {
+        scan_id,
+        line: line.into(),
+        level: level.to_string(),
+    };
+    let _ = app.emit("scan-log", payload);
+}
+
+fn emit_progress(
+    app: &AppHandle,
+    scan_id: u64,
+    phase: &str,
+    processed: Option<usize>,
+    total: Option<usize>,
+    vertices: Option<usize>,
+    groups: Option<usize>,
+) {
+    let payload = ScanProgressEventPayload {
+        scan_id,
+        phase: phase.to_string(),
+        processed,
+        total,
+        vertices,
+        groups,
+    };
+    let _ = app.emit("scan-progress", payload);
+}
+
+fn emit_finished(app: &AppHandle, scan_id: u64, status: &str, message: Option<String>) {
+    let payload = ScanFinishedEventPayload {
+        scan_id,
+        status: status.to_string(),
+        message,
+    };
+    let _ = app.emit("scan-finished", payload);
+}
+
+struct EventCallbacks {
+    app: AppHandle,
+    scan_id: u64,
+    cancel_flag: Arc<AtomicBool>,
+}
+
+impl ScanCallbacks for EventCallbacks {
+    fn is_cancelled(&self) -> bool {
+        self.cancel_flag.load(Ordering::Relaxed)
+    }
+
+    fn on_event(&self, event: ScanEvent) {
+        match event {
+            ScanEvent::ScanDone { scanned_paths } => {
+                emit_log(
+                    &self.app,
+                    self.scan_id,
+                    format!("scan done: {scanned_paths} paths"),
+                    "info",
+                );
+                emit_progress(
+                    &self.app,
+                    self.scan_id,
+                    "scan_done",
+                    None,
+                    None,
+                    Some(scanned_paths),
+                    None,
+                );
+            }
+            ScanEvent::ProcessedImage { processed, total } => {
+                emit_progress(
+                    &self.app,
+                    self.scan_id,
+                    "ingest_progress",
+                    Some(processed),
+                    Some(total),
+                    None,
+                    None,
+                );
+            }
+            ScanEvent::IngestDone {
+                vertices,
+                scanned_paths,
+                decode_ok,
+                prepare_ok,
+                hash_skip,
+                threads,
+            } => {
+                emit_log(
+                    &self.app,
+                    self.scan_id,
+                    format!(
+                        "ingest done: vertices={vertices} scanned={scanned_paths} decode_ok={decode_ok} prepare_ok={prepare_ok} hash_skip={hash_skip} threads={threads}"
+                    ),
+                    "info",
+                );
+                emit_progress(
+                    &self.app,
+                    self.scan_id,
+                    "ingest_done",
+                    None,
+                    None,
+                    Some(vertices),
+                    None,
+                );
+            }
+            ScanEvent::HashGroupsDone {
+                hash_edges,
+                duplicate_vertices,
+            } => {
+                emit_log(
+                    &self.app,
+                    self.scan_id,
+                    format!(
+                        "hash groups: hash_edges={hash_edges} duplicate_vertices={duplicate_vertices}"
+                    ),
+                    "info",
+                );
+            }
+            ScanEvent::PairwiseStart {
+                vertices,
+                total_pairs,
+                hash_pairs,
+                threads,
+            } => {
+                emit_log(
+                    &self.app,
+                    self.scan_id,
+                    format!(
+                        "pairwise start: vertices={vertices} total_pairs={total_pairs} hash_pairs={hash_pairs} threads={threads}"
+                    ),
+                    "info",
+                );
+                emit_progress(
+                    &self.app,
+                    self.scan_id,
+                    "pairwise_start",
+                    None,
+                    None,
+                    Some(vertices),
+                    None,
+                );
+            }
+            ScanEvent::PairwiseDone {
+                hash_edges,
+                composite_edges,
+                score_cache,
+            } => {
+                emit_log(
+                    &self.app,
+                    self.scan_id,
+                    format!(
+                        "pairwise done: hash_edges={hash_edges} composite_edges={composite_edges} score_cache={score_cache}"
+                    ),
+                    "info",
+                );
+            }
+            ScanEvent::ClusteringDone { groups } => {
+                emit_progress(
+                    &self.app,
+                    self.scan_id,
+                    "clustering_done",
+                    None,
+                    None,
+                    None,
+                    Some(groups),
+                );
+                emit_log(
+                    &self.app,
+                    self.scan_id,
+                    format!("clustering done: groups={groups}"),
+                    "info",
+                );
+            }
+            ScanEvent::WritingDone => {
+                emit_log(&self.app, self.scan_id, "result prepared in memory", "info");
+            }
+            ScanEvent::Decoded { .. } | ScanEvent::Prepared { .. } => {}
+            ScanEvent::DecodeFailed { path, message } => {
+                emit_log(
+                    &self.app,
+                    self.scan_id,
+                    format!("decode failed {}: {message}", path.display()),
+                    "warn",
+                );
+            }
+            ScanEvent::PrepareFailed { path, message } => {
+                emit_log(
+                    &self.app,
+                    self.scan_id,
+                    format!("prepare failed {}: {message}", path.display()),
+                    "warn",
+                );
+            }
+            ScanEvent::FeaturesFailed { path, message } => {
+                emit_log(
+                    &self.app,
+                    self.scan_id,
+                    format!("features failed {}: {message}", path.display()),
+                    "warn",
+                );
+            }
+            ScanEvent::HashSkipped { path, message } => {
+                emit_log(
+                    &self.app,
+                    self.scan_id,
+                    format!("hash skip {}: {message}", path.display()),
+                    "warn",
+                );
+            }
+        }
+    }
+}
+
+#[tauri::command]
+fn load_settings(app: AppHandle) -> Result<Config, String> {
+    let path = settings_path(&app)?;
+    if !path.exists() {
+        return Ok(default_config());
+    }
+    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let cfg: Config = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    similar_textures_core::config::validate(&cfg).map_err(|e| e.to_string())?;
+    Ok(cfg)
+}
+
+#[tauri::command]
+fn save_settings(app: AppHandle, settings: Config) -> Result<(), String> {
+    similar_textures_core::config::validate(&settings).map_err(|e| e.to_string())?;
+    let path = settings_path(&app)?;
+    let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(path, text).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn scan_status(slots: State<AppSlots>) -> Result<ScanStatusResponse, String> {
+    let status = *slots.status.lock().map_err(|_| "lock poisoned")?;
+    let active = slots.active_scan_id.load(Ordering::Relaxed);
+    Ok(ScanStatusResponse {
+        state: status.as_str().to_string(),
+        active_scan_id: (active != 0).then_some(active),
+    })
+}
+
+#[tauri::command]
+fn get_last_result(slots: State<AppSlots>) -> Result<LastResultResponse, String> {
+    let result = slots
+        .last_result
+        .lock()
+        .map_err(|_| "lock poisoned")?
+        .clone();
+    Ok(LastResultResponse {
+        has_result: result.is_some(),
+        result,
+    })
+}
+
+#[tauri::command]
+fn cancel_scan(slots: State<AppSlots>) -> Result<(), String> {
+    let status = *slots.status.lock().map_err(|_| "lock poisoned")?;
+    if status != ScanStatusValue::Running {
+        return Ok(());
+    }
+    slots.cancel_flag.store(true, Ordering::Relaxed);
+    Ok(())
+}
+
+#[tauri::command]
+fn start_scan(
+    app: AppHandle,
+    slots: State<AppSlots>,
+    request: StartScanRequest,
+) -> Result<StartScanResponse, String> {
+    let mut status_guard = slots.status.lock().map_err(|_| "lock poisoned")?;
+    if *status_guard == ScanStatusValue::Running {
+        return Err("scan already running".to_string());
+    }
+    *status_guard = ScanStatusValue::Running;
+    drop(status_guard);
+
+    slots.cancel_flag.store(false, Ordering::Relaxed);
+
+    let scan_id = slots.scan_sequence.fetch_add(1, Ordering::Relaxed) + 1;
+    slots.active_scan_id.store(scan_id, Ordering::Relaxed);
+
+    let input_dir = request.input_dir.trim();
+    let input = PathBuf::from(input_dir);
+    let threads = request.threads.unwrap_or_else(default_threads).max(1);
+    let cfg = load_settings(app.clone())?;
+    emit_log(
+        &app,
+        scan_id,
+        format!("scan start: input={} threads={threads}", input.display()),
+        "info",
+    );
+
+    let app_handle = app.clone();
+    let cancel_flag = slots.cancel_flag.clone();
+
+    thread::spawn(move || {
+        let callbacks = EventCallbacks {
+            app: app_handle.clone(),
+            scan_id,
+            cancel_flag: cancel_flag.clone(),
+        };
+        let core_request = ScanRequest { input, threads };
+        let run_result = run_scan(&cfg, &core_request, &callbacks);
+
+        let app_slots = app_handle.state::<AppSlots>();
+        let mut status = app_slots.status.lock().expect("status lock");
+        match run_result {
+            Ok(ScanOutcome {
+                status: ScanStatus::Completed,
+                result,
+                ..
+            }) => {
+                *app_slots.last_result.lock().expect("result lock") = Some(result);
+                *status = ScanStatusValue::Completed;
+                emit_finished(&app_handle, scan_id, "completed", None);
+            }
+            Ok(ScanOutcome {
+                status: ScanStatus::Cancelled,
+                ..
+            }) => {
+                *status = ScanStatusValue::Cancelled;
+                emit_finished(&app_handle, scan_id, "cancelled", None);
+            }
+            Err(err) => {
+                *status = ScanStatusValue::Failed;
+                emit_log(&app_handle, scan_id, format!("scan failed: {err}"), "error");
+                emit_finished(&app_handle, scan_id, "failed", Some(err.to_string()));
+            }
+        }
+        app_slots.active_scan_id.store(0, Ordering::Relaxed);
+    });
+
+    Ok(StartScanResponse { scan_id })
+}
+
+#[tauri::command]
+fn export_last_result_json(
+    slots: State<AppSlots>,
+    request: ExportRequest,
+) -> Result<ExportResponse, String> {
+    let path = request
+        .target_path
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| "target_path is required".to_string())?;
+    let output_path = PathBuf::from(path);
+
+    if let Some(parent) = output_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+    }
+
+    let result = slots
+        .last_result
+        .lock()
+        .map_err(|_| "lock poisoned")?
+        .clone()
+        .ok_or_else(|| "no scan result in memory".to_string())?;
+
+    write_result_json(Path::new(&output_path), &result).map_err(|e| e.to_string())?;
+    Ok(ExportResponse {
+        path: output_path.to_string_lossy().to_string(),
+    })
+}
+
+fn default_threads() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+}
+
+fn default_config() -> Config {
+    serde_json::from_str(
+        r#"{
+            "enable_phash": true,
+            "enable_ssim": true,
+            "enable_histogram": true,
+            "enable_alpha_crop": false,
+            "enable_rotations": false,
+            "enable_flip": false,
+            "threshold": 0.85,
+            "weights": { "phash": 0.35, "ssim": 0.45, "histogram": 0.2 },
+            "hash_algorithm": "sha256",
+            "phash_max_distance": 10,
+            "ssim_threshold": 0.9,
+            "resize_size": 256,
+            "hist_bins": 512,
+            "hist_method": "correlation",
+            "alpha_threshold": 0.05
+        }"#,
+    )
+    .expect("valid embedded default config")
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .manage(AppSlots::default())
+        .invoke_handler(tauri::generate_handler![
+            load_settings,
+            save_settings,
+            scan_status,
+            get_last_result,
+            start_scan,
+            cancel_scan,
+            export_last_result_json,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_is_valid() {
+        let cfg = default_config();
+        similar_textures_core::config::validate(&cfg).expect("default config must validate");
+    }
+}
+
