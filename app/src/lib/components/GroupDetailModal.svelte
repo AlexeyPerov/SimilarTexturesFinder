@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { convertFileSrc } from "@tauri-apps/api/core";
+  import ThumbnailImage from "$lib/components/ThumbnailImage.svelte";
   import {
     formatMetricValue,
     groupTitle,
@@ -11,10 +11,26 @@
 
   type Props = {
     group: ScanGroup;
+    previewMaxPx?: number;
     onClose: () => void;
+    onCopyPath: (path: string) => void;
+    onCopyAllPaths: (paths: string[]) => void;
+    onRevealPath: (path: string) => void;
   };
 
-  let { group, onClose }: Props = $props();
+  let {
+    group,
+    previewMaxPx = 256,
+    onClose,
+    onCopyPath,
+    onCopyAllPaths,
+    onRevealPath,
+  }: Props = $props();
+
+  function similarityPercent(score: number | null | undefined): number | null {
+    if (score == null || !Number.isFinite(score)) return null;
+    return Math.round(Math.max(0, Math.min(1, score)) * 100);
+  }
 </script>
 
 <div
@@ -30,12 +46,17 @@
   <div class="modal detail-modal" role="dialog" aria-modal="true" aria-labelledby="group-detail-title">
     <div class="modal-header">
       <h2 id="group-detail-title">Group Details</h2>
-      <button type="button" class="modal-close-btn" aria-label="Close group details" onclick={() => onClose()}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
+      <div class="header-actions">
+        <button type="button" class="action-btn tertiary" onclick={() => onCopyAllPaths(group.images)}>
+          Copy all paths
+        </button>
+        <button type="button" class="modal-close-btn" aria-label="Close group details" onclick={() => onClose()}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
     </div>
 
     <div class="modal-body">
@@ -53,46 +74,81 @@
         <h3>Images</h3>
         <div class="detail-grid">
           {#each group.images as imagePath (imagePath)}
-            <figure class="thumb-item detail-thumb-item" title={imagePath}>
-              <img src={convertFileSrc(imagePath)} alt={imagePath} loading="lazy" />
-              <figcaption>{toBaseName(imagePath)}</figcaption>
-            </figure>
+            <div class="detail-thumb-wrap">
+              <figure class="thumb-item detail-thumb-item" title={imagePath}>
+                <ThumbnailImage imagePath={imagePath} maxPx={previewMaxPx} alt={imagePath} class="detail-img" />
+                <figcaption>{toBaseName(imagePath)}</figcaption>
+              </figure>
+              <div class="thumb-actions">
+                <button type="button" class="icon-btn" title="Copy path" onclick={() => onCopyPath(imagePath)}>Copy</button>
+                <button type="button" class="icon-btn" title="Reveal in folder" onclick={() => onRevealPath(imagePath)}>Reveal</button>
+              </div>
+            </div>
           {/each}
         </div>
       </section>
 
       <section class="detail-section">
-        <h3>Reasons</h3>
+        <h3>Similarity pairs</h3>
         {#if group.reasons.length === 0}
           <p class="stub">No pair reasons were provided for this group.</p>
         {:else}
           <ul class="reasons-list">
             {#each group.reasons as reason (`${reason.left}:${reason.right}:${reason.type}`)}
+              {@const pct = similarityPercent(reason.composite_score)}
               <li class="reason-item">
                 <div class="reason-item-header">
                   <div class="reason-pair">{toBaseName(reason.left)} ↔ {toBaseName(reason.right)}</div>
                   <div class="reason-type">{pairReasonTypeLabel(reason.type)}</div>
                 </div>
-                <div class="reason-metrics">
-                  {#if reason.composite_score != null}
-                    <span class="reason-metric">composite: {formatMetricValue(reason.composite_score)}</span>
-                  {/if}
-                  {#if reason.phash}
-                    <span class="reason-metric">
-                      pHash: score {formatMetricValue(reason.phash.score)}, raw {formatMetricValue(reason.phash.raw)}, valid {reason.phash.valid ? "yes" : "no"}
-                    </span>
-                  {/if}
-                  {#if reason.ssim}
-                    <span class="reason-metric">
-                      SSIM: score {formatMetricValue(reason.ssim.score)}, raw {formatMetricValue(reason.ssim.raw)}, valid {reason.ssim.valid ? "yes" : "no"}
-                    </span>
-                  {/if}
-                  {#if reason.histogram}
-                    <span class="reason-metric">
-                      Histogram: score {formatMetricValue(reason.histogram.score)}, raw {formatMetricValue(reason.histogram.raw)}, valid {reason.histogram.valid ? "yes" : "no"}
-                    </span>
-                  {/if}
+
+                <div class="pair-compare">
+                  <figure class="pair-thumb">
+                    <ThumbnailImage imagePath={reason.left} maxPx={previewMaxPx} alt={reason.left} class="pair-img" />
+                    <figcaption>{toBaseName(reason.left)}</figcaption>
+                  </figure>
+                  <div class="pair-score">
+                    {#if pct != null}
+                      <div class="score-value">{pct}%</div>
+                      <div class="score-bar-track">
+                        <div class="score-bar-fill" style:width="{pct}%"></div>
+                      </div>
+                      <div class="score-caption">similarity</div>
+                    {:else}
+                      <div class="score-caption">Exact match</div>
+                    {/if}
+                  </div>
+                  <figure class="pair-thumb">
+                    <ThumbnailImage imagePath={reason.right} maxPx={previewMaxPx} alt={reason.right} class="pair-img" />
+                    <figcaption>{toBaseName(reason.right)}</figcaption>
+                  </figure>
                 </div>
+
+                {#if reason.phash || reason.ssim || reason.histogram}
+                  <details class="metric-details">
+                    <summary>Metric details</summary>
+                    <div class="reason-metrics">
+                      {#if reason.composite_score != null}
+                        <span class="reason-metric">composite: {formatMetricValue(reason.composite_score)}</span>
+                      {/if}
+                      {#if reason.phash}
+                        <span class="reason-metric">
+                          pHash: score {formatMetricValue(reason.phash.score)}, raw {formatMetricValue(reason.phash.raw)}, valid {reason.phash.valid ? "yes" : "no"}
+                        </span>
+                      {/if}
+                      {#if reason.ssim}
+                        <span class="reason-metric">
+                          SSIM: score {formatMetricValue(reason.ssim.score)}, raw {formatMetricValue(reason.ssim.raw)}, valid {reason.ssim.valid ? "yes" : "no"}
+                        </span>
+                      {/if}
+                      {#if reason.histogram}
+                        <span class="reason-metric">
+                          Histogram: score {formatMetricValue(reason.histogram.score)}, raw {formatMetricValue(reason.histogram.raw)}, valid {reason.histogram.valid ? "yes" : "no"}
+                        </span>
+                      {/if}
+                    </div>
+                  </details>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -134,6 +190,7 @@
     align-items: center;
     padding: 0.85rem 1rem;
     border-bottom: 1px solid #34353f;
+    gap: 0.5rem;
   }
 
   .modal-header h2 {
@@ -141,6 +198,12 @@
     font-size: 1rem;
     font-weight: 600;
     color: #f2f3f7;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
   }
 
   .modal-close-btn {
@@ -221,23 +284,23 @@
     gap: 0.45rem;
   }
 
+  .detail-thumb-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
   .thumb-item {
     margin: 0;
     border: 1px solid #34353f;
     border-radius: 6px;
     background: #181920;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
-  .thumb-item img {
-    display: block;
-    width: 100%;
-    height: 76px;
-    object-fit: cover;
-    background: #101116;
-  }
-
-  .detail-thumb-item img {
+  :global(.detail-img) {
     height: 110px;
   }
 
@@ -248,6 +311,29 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .thumb-actions {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.25rem;
+  }
+
+  .icon-btn,
+  .action-btn.tertiary {
+    border: 1px solid #3f4150;
+    border-radius: 4px;
+    background: #1e1f26;
+    color: #aeb1bf;
+    font-size: 0.66rem;
+    padding: 0.15rem 0.35rem;
+    cursor: pointer;
+  }
+
+  .icon-btn:hover,
+  .action-btn.tertiary:hover {
+    border-color: #5c7cfa;
+    color: #fff;
   }
 
   .stub {
@@ -272,7 +358,7 @@
     padding: 0.5rem 0.6rem;
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.45rem;
   }
 
   .reason-item-header {
@@ -296,10 +382,80 @@
     letter-spacing: 0.04em;
   }
 
+  .pair-compare {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.55rem;
+    align-items: center;
+  }
+
+  .pair-thumb {
+    margin: 0;
+    border: 1px solid #34353f;
+    border-radius: 6px;
+    background: #181920;
+    overflow: hidden;
+  }
+
+  :global(.pair-img) {
+    height: 96px;
+  }
+
+  .pair-thumb figcaption {
+    padding: 0.25rem;
+    font-size: 0.66rem;
+    color: #9ea1ad;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pair-score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 4.5rem;
+  }
+
+  .score-value {
+    font-size: 1rem;
+    font-weight: 650;
+    color: #dce3ff;
+  }
+
+  .score-bar-track {
+    width: 100%;
+    height: 0.35rem;
+    border-radius: 999px;
+    background: #1a1b21;
+    border: 1px solid #3f4150;
+    overflow: hidden;
+  }
+
+  .score-bar-fill {
+    height: 100%;
+    background: #5c7cfa;
+  }
+
+  .score-caption {
+    font-size: 0.68rem;
+    color: #8b8d9a;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .metric-details summary {
+    cursor: pointer;
+    font-size: 0.72rem;
+    color: #aeb1bf;
+  }
+
   .reason-metrics {
     display: flex;
     flex-wrap: wrap;
     gap: 0.32rem;
+    margin-top: 0.35rem;
   }
 
   .reason-metric {

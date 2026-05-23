@@ -62,6 +62,32 @@ impl ImageData {
         Ok(Self::from_dynamic(img, max_dimension_px))
     }
 
+    /// Write a JPEG preview capped to `max_dimension_px` (longest side).
+    pub fn write_preview_jpeg(
+        source: &Path,
+        dest: &Path,
+        max_dimension_px: u32,
+    ) -> Result<(), String> {
+        let data = Self::decode_path(source, Some(max_dimension_px))?;
+        let rgba = data.to_rgba_image();
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 85);
+        encoder
+            .encode(
+                rgba.as_raw(),
+                rgba.width(),
+                rgba.height(),
+                image::ExtendedColorType::Rgba8,
+            )
+            .map_err(|e| format!("encode preview for {}: {e}", source.display()))?;
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("create preview cache dir {}: {e}", parent.display()))?;
+        }
+        std::fs::write(dest, bytes)
+            .map_err(|e| format!("write preview {}: {e}", dest.display()))
+    }
+
     pub fn to_rgba_image(&self) -> RgbaImage {
         RgbaImage::from_raw(self.width, self.height, self.rgba.clone())
             .expect("rgba length matches dimensions")

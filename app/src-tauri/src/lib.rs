@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use similar_textures_core::config::Config;
 use similar_textures_core::{
-    run_scan, write_result_json, ScanCallbacks, ScanEvent, ScanOutcome, ScanRequest,
-    ScanResult, ScanStatus,
+    image_loader::ImageData, output::read_result_json, run_scan, write_result_json, ScanCallbacks,
+    ScanEvent, ScanOutcome, ScanRequest, ScanResult, ScanStatus,
 };
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -65,6 +67,33 @@ struct StoredUiStateV1 {
     version: u32,
     last_input_dir: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LoadResultRequest {
+    source_path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LoadResultResponse {
+    group_count: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ImagePreviewRequest {
+    path: String,
+    max_px: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ImagePreviewResponse {
+    path: String,
+}
+
+const DEFAULT_PREVIEW_MAX_PX: u32 = 256;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -596,6 +625,60 @@ fn export_last_result_json(
     })
 }
 
+fn preview_cache_key(source: &Path, max_px: u32) -> String {
+    let mut hasher = DefaultHasher::new();
+    source.to_string_lossy().hash(&mut hasher);
+    if let Ok(meta) = std::fs::metadata(source) {
+        meta.len().hash(&mut hasher);
+        if let Ok(modified) = meta.modified() {
+            modified.hash(&mut hasher);
+        }
+    }
+    max_px.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn preview_cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    Ok(dir.join("previews"))
+}
+
+#[tauri::command]
+fn get_image_preview(app: AppHandle, request: ImagePreviewRequest) -> Result<ImagePreviewResponse, String> {
+    let source = PathBuf::from(request.path.trim());
+    if !source.is_file() {
+        return Err(format!("image not found: {}", source.display()));
+    }
+    let max_px = request.max_px.unwrap_or(DEFAULT_PREVIEW_MAX_PX).max(1);
+    let cache_dir = preview_cache_dir(&app)?;
+    let cache_path = cache_dir.join(format!("{}.jpg", preview_cache_key(&source, max_px)));
+    if !cache_path.exists() {
+        ImageData::write_preview_jpeg(&source, &cache_path, max_px)?;
+    }
+    Ok(ImagePreviewResponse {
+        path: cache_path.to_string_lossy().to_string(),
+    })
+}
+
+#[tauri::command]
+fn load_result_json(
+    slots: State<AppSlots>,
+    request: LoadResultRequest,
+) -> Result<LoadResultResponse, String> {
+    let source_path = request.source_path.trim();
+    if source_path.is_empty() {
+        return Err("source_path is required".to_string());
+    }
+    let path = PathBuf::from(source_path);
+    let result = read_result_json(&path)?;
+    let group_count = result.groups.len();
+    *slots
+        .last_result
+        .lock()
+        .map_err(|_| "lock poisoned")? = Some(result);
+    Ok(LoadResultResponse { group_count })
+}
+
 fn default_threads() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
@@ -671,6 +754,8 @@ pub fn run() {
             start_scan,
             cancel_scan,
             export_last_result_json,
+            get_image_preview,
+            load_result_json,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -752,6 +837,25 @@ mod tests {
         save_last_input_dir_to_path(&path, "/tmp/textures").expect("save");
         let loaded = load_ui_state_from_path(&path);
         assert_eq!(loaded.last_input_dir.as_deref(), Some("/tmp/textures"));
+    }
+
+    #[test]
+    fn read_result_json_roundtrip() {
+        let dir = tempdir().expect("tempdir");
+        let json_path = dir.path().join("result.json");
+        let sample = similar_textures_core::ScanResult {
+            groups: vec![similar_textures_core::ScanGroup {
+                id: 1,
+                score: Some(0.9),
+                images: vec!["/tmp/a.png".to_string()],
+                reason_kind: similar_textures_core::GroupReasonKind::Singleton,
+                reasons: vec![],
+            }],
+        };
+        similar_textures_core::write_result_json(&json_path, &sample).expect("write");
+        let loaded = similar_textures_core::output::read_result_json(&json_path).expect("read");
+        assert_eq!(loaded.groups.len(), 1);
+        assert_eq!(loaded.groups[0].id, 1);
     }
 
     #[test]

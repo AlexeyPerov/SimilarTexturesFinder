@@ -3,12 +3,15 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { open, save } from "@tauri-apps/plugin-dialog";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { segmentConsoleLines } from "$lib/logSegments";
   import GroupDetailModal from "$lib/components/GroupDetailModal.svelte";
   import ResultsPanel from "$lib/components/ResultsPanel.svelte";
   import ScanPanel from "$lib/components/ScanPanel.svelte";
   import SettingsModal from "$lib/components/SettingsModal.svelte";
   import {
+    countUniqueImages,
+    filterGroupsBySearch,
     filterVisibleGroups,
     groupedPreview,
     maxGroupsPerPage,
@@ -17,6 +20,7 @@
   } from "$lib/groupUtils";
   import { idleProgress, progressFromPhase } from "$lib/scanProgress";
   import { initialSettings, validateSettings } from "$lib/settingsValidation";
+  import { settingsEqual, settingsFingerprint } from "$lib/settingsUtils";
   import type {
     AppSettings,
     GroupReasonKind,
@@ -67,6 +71,10 @@
     path: string;
   };
 
+  type LoadResultResponse = {
+    groupCount: number;
+  };
+
   const maxLogLines = 1500;
   const bannerAutoDismissMs = 4500;
 
@@ -82,12 +90,15 @@
   let scanProgress = $state(idleProgress());
   let scanStartMs = $state<number | null>(null);
   let elapsedSeconds = $state<number | null>(null);
+  let lastScanDurationSeconds = $state<number | null>(null);
+  let lastScanSettingsFingerprint = $state<string | null>(null);
   let result = $state<ScanResult | null>(null);
   let saveMessage = $state("");
   let loadError = $state("");
   let settingsErrors = $state<SettingsValidationErrors>({});
   let selectedReasonKinds = $state<GroupReasonKind[]>([]);
   let sortOption = $state<SortOption>("count_desc");
+  let searchQuery = $state("");
   let resultsPage = $state(1);
   let selectedGroupId = $state<number | null>(null);
   let scanBanner = $state<TabBanner>(null);
@@ -98,6 +109,20 @@
 
   let elapsedTimer: ReturnType<typeof setInterval> | undefined;
   let bannerTimer: ReturnType<typeof setTimeout> | undefined;
+
+  let previewMaxPx = $derived(settings.max_decode_dimension_px ?? 256);
+  let totalResultGroupCount = $derived(result?.groups.length ?? 0);
+  let canScanAgain = $derived(inputDir.trim().length > 0);
+  let staleResults = $derived(
+    result != null &&
+      lastScanSettingsFingerprint != null &&
+      settingsFingerprint(settings) !== lastScanSettingsFingerprint,
+  );
+  let lastScanDurationLabel = $derived(
+    lastScanDurationSeconds == null
+      ? null
+      : `${Math.floor(lastScanDurationSeconds / 60)}:${(lastScanDurationSeconds % 60).toString().padStart(2, "0")}`,
+  );
 
   function resetMessages() {
     saveMessage = "";
@@ -140,6 +165,32 @@
     }
   }
 
+  async function copyPath(path: string) {
+    try {
+      await navigator.clipboard.writeText(path);
+      showTabBanner("results", "success", "Path copied to clipboard.");
+    } catch {
+      showTabBanner("results", "error", "Could not copy path to clipboard.");
+    }
+  }
+
+  async function copyAllPaths(paths: string[]) {
+    try {
+      await navigator.clipboard.writeText(paths.join("\n"));
+      showTabBanner("results", "success", `Copied ${paths.length} paths to clipboard.`);
+    } catch {
+      showTabBanner("results", "error", "Could not copy paths to clipboard.");
+    }
+  }
+
+  async function revealPath(path: string) {
+    try {
+      await revealItemInDir(path);
+    } catch (e) {
+      showTabBanner("results", "error", `Could not reveal file: ${String(e)}`);
+    }
+  }
+
   async function chooseInputDirectory() {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
@@ -148,7 +199,7 @@
       try {
         await invoke("save_last_input_dir", { inputDir: selected });
       } catch {
-        // Non-fatal; folder still selected for this session.
+        // Non-fatal.
       }
     }
   }
@@ -178,6 +229,28 @@
     }
   }
 
+  async function persistSettings(next: AppSettings) {
+    const errors = validateSettings(next);
+    if (Object.keys(errors).length > 0) {
+      throw new Error("Settings validation failed.");
+    }
+    await invoke("save_settings", { settings: next });
+    settings = cloneSettings(next);
+    if (showSettings && settingsEqual(settings, settingsDraft)) {
+      settingsDraft = cloneSettings(settings);
+    }
+  }
+
+  async function toggleHideSingletons(next: boolean) {
+    const nextSettings = cloneSettings(settings);
+    nextSettings.hide_single_image_groups = next;
+    try {
+      await persistSettings(nextSettings);
+    } catch (e) {
+      showTabBanner("results", "error", `Could not save setting: ${String(e)}`);
+    }
+  }
+
   function openSettings() {
     resetMessages();
     settingsDraft = cloneSettings(settings);
@@ -199,8 +272,7 @@
       return;
     }
     try {
-      await invoke("save_settings", { settings: settingsDraft });
-      settings = cloneSettings(settingsDraft);
+      await persistSettings(settingsDraft);
       showSettings = false;
       showTabBanner(activeTab, "success", "Settings saved.");
     } catch (e) {
@@ -258,6 +330,7 @@
 
     clearLogs();
     scanProgress = progressFromPhase("starting");
+    lastScanSettingsFingerprint = settingsFingerprint(settings);
     try {
       const response = await invoke<StartScanResponse>("start_scan", {
         request: { inputDir: inputDir.trim() },
@@ -269,7 +342,7 @@
     } catch (e) {
       appendLog(`Scan start failed: ${String(e)}`);
       scanProgress = progressFromPhase("failed");
-      showTabBanner("scan", "error", `Scan could not start: ${String(e)}`);
+      showTabBanner(activeTab, "error", `Scan could not start: ${String(e)}`);
     }
   }
 
@@ -301,6 +374,27 @@
     }
   }
 
+  async function importJson() {
+    resultsBanner = null;
+    const selected = await open({
+      title: "Import result JSON",
+      filters: [{ name: "JSON", extensions: ["json"] }],
+      multiple: false,
+    });
+    if (!selected || Array.isArray(selected)) return;
+    try {
+      const out = await invoke<LoadResultResponse>("load_result_json", {
+        request: { sourcePath: selected },
+      });
+      await refreshResult();
+      lastScanSettingsFingerprint = settingsFingerprint(settings);
+      activeTab = "results";
+      showTabBanner("results", "success", `Imported ${out.groupCount} groups from JSON.`);
+    } catch (e) {
+      showTabBanner("results", "error", `Import failed: ${String(e)}`);
+    }
+  }
+
   function hasReasonFilter(kind: GroupReasonKind) {
     return selectedReasonKinds.includes(kind);
   }
@@ -327,9 +421,10 @@
 
   let sourceGroups = $derived(result?.groups ?? []);
   let visibleGroups = $derived(filterVisibleGroups(sourceGroups, settings));
+  let searchFilteredGroups = $derived(filterGroupsBySearch(visibleGroups, searchQuery));
   let availableReasonKinds = $derived.by(() => {
     const seen = new Set<GroupReasonKind>();
-    for (const group of visibleGroups) {
+    for (const group of searchFilteredGroups) {
       seen.add(group.reason_kind);
     }
     return reasonKindOrder.filter((kind) => seen.has(kind));
@@ -338,10 +433,11 @@
     const activeFilters = new Set(selectedReasonKinds);
     const filtered =
       activeFilters.size === 0
-        ? visibleGroups
-        : visibleGroups.filter((group) => activeFilters.has(group.reason_kind));
+        ? searchFilteredGroups
+        : searchFilteredGroups.filter((group) => activeFilters.has(group.reason_kind));
     return sortGroups(filtered, sortOption);
   });
+  let uniqueImageCount = $derived(countUniqueImages(filteredSortedGroups));
   let totalPages = $derived(Math.max(1, Math.ceil(filteredSortedGroups.length / maxGroupsPerPage)));
   let pageStartIndex = $derived((resultsPage - 1) * maxGroupsPerPage);
   let pagedGroups = $derived(
@@ -361,6 +457,7 @@
     result.groups;
     settings.hide_single_image_groups;
     sortOption;
+    searchQuery;
     selectedReasonKinds.join(",");
     resultsPage = 1;
   });
@@ -420,6 +517,7 @@
       if (activeScanId !== null && p.scanId !== activeScanId) return;
       running = false;
       statusState = p.status;
+      if (elapsedSeconds != null) lastScanDurationSeconds = elapsedSeconds;
       stopElapsedTimer();
 
       if (p.status === "completed") {
@@ -472,7 +570,7 @@
             aria-selected={activeTab === "results"}
             onclick={() => (activeTab = "results")}
           >
-            Results
+            Results{#if result} ({totalResultGroupCount}){/if}
           </button>
         </div>
       </div>
@@ -525,6 +623,14 @@
       <ResultsPanel
         hasResult={result != null}
         filteredGroupCount={filteredSortedGroups.length}
+        {uniqueImageCount}
+        lastScanDurationLabel={lastScanDurationLabel}
+        staleResults={staleResults}
+        bind:searchQuery
+        hideSingleImageGroups={settings.hide_single_image_groups}
+        previewMaxPx={previewMaxPx}
+        {running}
+        {canScanAgain}
         banner={resultsBanner}
         bind:sortOption
         {availableReasonKinds}
@@ -534,6 +640,9 @@
         {previewGroups}
         onDismissBanner={() => (resultsBanner = null)}
         onExport={() => void exportJson()}
+        onImport={() => void importJson()}
+        onScanAgain={() => void startScan()}
+        onToggleHideSingletons={(next) => void toggleHideSingletons(next)}
         onToggleReasonFilter={toggleReasonFilter}
         onGoToPage={goToPage}
         onOpenGroup={openGroupDetails}
@@ -544,6 +653,7 @@
   {#if showSettings}
     <SettingsModal
       bind:settingsDraft
+      savedSettings={settings}
       {settingsErrors}
       {saveMessage}
       {loadError}
@@ -553,7 +663,14 @@
   {/if}
 
   {#if selectedGroup}
-    <GroupDetailModal group={selectedGroup} onClose={closeGroupDetails} />
+    <GroupDetailModal
+      group={selectedGroup}
+      previewMaxPx={previewMaxPx}
+      onClose={closeGroupDetails}
+      onCopyPath={(path) => void copyPath(path)}
+      onCopyAllPaths={(paths) => void copyAllPaths(paths)}
+      onRevealPath={(path) => void revealPath(path)}
+    />
   {/if}
 </div>
 

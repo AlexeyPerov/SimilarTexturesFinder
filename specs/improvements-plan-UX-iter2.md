@@ -250,8 +250,8 @@ Target: grid scroll stays smooth with 500+ groups (15 per page × up to 10 thumb
 
 **Verification:**
 
-- [ ] Large PNG/JPEG textures in grid do not cause obvious UI jank.
-- [ ] Group detail modal uses same limited preview path.
+- [x] Large PNG/JPEG textures in grid do not cause obvious UI jank.
+- [x] Group detail modal uses same limited preview path.
 
 ### UX-2.2 Search by filename / path
 
@@ -265,9 +265,9 @@ Reset pagination to page 1 on search change.
 
 **Verification:**
 
-- [ ] Typing filters groups live.
-- [ ] Empty search restores full list.
-- [ ] “No groups match” empty state when filter yields zero groups.
+- [x] Typing filters groups live.
+- [x] Empty search restores full list.
+- [x] “No groups match” empty state when filter yields zero groups.
 
 ### UX-2.3 Sort by similarity score
 
@@ -284,7 +284,7 @@ Groups with `score == null` sort last (document behavior).
 
 **Verification:**
 
-- [ ] Sort changes order correctly on fixture with varied scores.
+- [x] Sort changes order correctly on fixture with varied scores.
 
 ### UX-2.4 Quick toggle: hide single-image groups
 
@@ -298,8 +298,8 @@ Avoid forcing users into Settings modal for a common filter.
 
 **Verification:**
 
-- [ ] Toggle updates visible groups without rescan.
-- [ ] Setting persists across restart if wired to settings.
+- [x] Toggle updates visible groups without rescan.
+- [x] Setting persists across restart if wired to settings.
 
 ### UX-2.5 Reveal in Finder / Explorer
 
@@ -314,7 +314,7 @@ Use `revealItemInDir` (or platform equivalent) from:
 
 **Verification:**
 
-- [ ] macOS: Finder reveals file; Windows: Explorer selects file (when tested).
+- [x] macOS: Finder reveals file; Windows: Explorer selects file (when tested).
 
 ### UX-2.6 Copy paths
 
@@ -331,7 +331,7 @@ Use clipboard API with success toast (UX-1.6).
 
 **Verification:**
 
-- [ ] Paste yields correct absolute paths.
+- [x] Paste yields correct absolute paths.
 
 ### UX-2.7 Import / load exported JSON
 
@@ -346,7 +346,7 @@ Allow user to open a previously exported `result.json` into in-memory results (f
 
 **Verification:**
 
-- [ ] Export → restart app → Import → Results match prior export.
+- [x] Export → restart app → Import → Results match prior export.
 
 ### UX-2.8 Results summary strip
 
@@ -362,7 +362,7 @@ When `result` present, show summary near header:
 
 **Verification:**
 
-- [ ] Summary updates when filters change.
+- [x] Summary updates when filters change.
 
 ### UX-2.9 Results tab badge + Re-run scan
 
@@ -375,8 +375,8 @@ When `result` present, show summary near header:
 
 **Verification:**
 
-- [ ] Badge visible after successful scan.
-- [ ] Scan again starts scan without switching tabs manually first.
+- [x] Badge visible after successful scan.
+- [x] Scan again starts scan without switching tabs manually first.
 
 ### UX-2.10 Pair comparison in group detail (stretch)
 
@@ -390,7 +390,7 @@ Collapse raw metric chips behind “Details” disclosure for advanced users.
 
 **Verification:**
 
-- [ ] Hash and composite pairs visually comparable without reading raw numbers.
+- [x] Hash and composite pairs visually comparable without reading raw numbers.
 
 ---
 
@@ -416,8 +416,8 @@ Use collapsible `<details>` or subheadings consistent with existing dark theme.
 
 **Verification:**
 
-- [ ] All existing fields still reachable.
-- [ ] Validation unchanged.
+- [x] All existing fields still reachable.
+- [x] Validation unchanged.
 
 ### UX-3.2 Presets: Fast / Balanced / Strict
 
@@ -437,7 +437,7 @@ User must still click **Save** to persist.
 
 **Verification:**
 
-- [ ] Each preset loads plausible values passing validation.
+- [x] Each preset loads plausible values passing validation.
 
 ### UX-3.3 Field help tooltips
 
@@ -449,7 +449,7 @@ Short `title` or info icon popover for: pHash, SSIM, histogram, alpha crop, reas
 
 **Verification:**
 
-- [ ] Every non-obvious field has one sentence of help.
+- [x] Every non-obvious field has one sentence of help.
 
 ### UX-3.4 Stale results hint
 
@@ -465,7 +465,7 @@ When current saved settings differ from last-scan settings and `result` exists, 
 
 **Verification:**
 
-- [ ] Change threshold → save → Results shows stale hint until rescan.
+- [x] Change threshold → save → Results shows stale hint until rescan.
 
 ### UX-3.5 Unsaved settings guard
 
@@ -479,7 +479,7 @@ If `settingsDraft` differs from `settings` when closing modal (backdrop, Escape,
 
 **Verification:**
 
-- [ ] Editing field then clicking backdrop prompts confirm.
+- [x] Editing field then clicking backdrop prompts confirm.
 
 ### UX-3.6 ORB settings exposure (optional / blocked)
 
@@ -495,7 +495,7 @@ Until then, add spec note in UI: “ORB matching not available in this build.”
 
 **Verification:**
 
-- [ ] N/A until core supports ORB in scan pipeline.
+- [x] UI note shown in Advanced section (full ORB controls blocked on core).
 
 ---
 
@@ -518,7 +518,7 @@ Compact legend or `?` popover near reason filter chips:
 
 **Verification:**
 
-- [ ] Legend visible on Results when groups exist.
+- [x] Legend visible on Results when groups exist.
 
 ### UX-4.2 Softer metric copy in group detail
 
@@ -533,7 +533,7 @@ Replace dense single-line metrics with:
 
 **Verification:**
 
-- [ ] Non-expert readable at a glance.
+- [x] Non-expert readable at a glance.
 
 ---
 
@@ -648,15 +648,15 @@ Button next to Export JSON.
 
 When Phases UX-1 through UX-4 are done:
 
-- [ ] A first-time user can pick a folder, run a scan, and see **visual progress** without reading the console.
-- [ ] Last folder persists across app restarts.
-- [ ] Export and copy actions show **on-tab confirmation**, not hidden logs.
-- [ ] Results support **search**, **score sort**, and **hide singletons** without opening Settings.
-- [ ] User can **reveal** and **copy** image paths from Results.
-- [ ] User can **import** a prior JSON export after restart.
-- [ ] Settings are **grouped** with at least one **preset**; stale-results hint appears after settings change.
-- [ ] Reason badges have a **legend**; group detail is readable without metric expertise.
-- [ ] `npm run check` and `cargo test` pass.
+- [x] A first-time user can pick a folder, run a scan, and see **visual progress** without reading the console.
+- [x] Last folder persists across app restarts.
+- [x] Export and copy actions show **on-tab confirmation**, not hidden logs.
+- [x] Results support **search**, **score sort**, and **hide singletons** without opening Settings.
+- [x] User can **reveal** and **copy** image paths from Results.
+- [x] User can **import** a prior JSON export after restart.
+- [x] Settings are **grouped** with at least one **preset**; stale-results hint appears after settings change.
+- [x] Reason badges have a **legend**; group detail is readable without metric expertise.
+- [x] `npm run check` and `cargo test` pass.
 
 ---
 
@@ -674,24 +674,24 @@ Mark status: `[ ]` not started · `[~]` in progress · `[x]` done
 | UX-1.5 | Persist last folder | [x] | — | |
 | UX-1.6 | Toasts / banners | [x] | — | |
 | UX-1.7 | Scan failure visibility | [x] | UX-1.6 | |
-| UX-2.1 | Thumbnail decode limits | [ ] | — | |
-| UX-2.2 | Search by filename | [ ] | — | |
-| UX-2.3 | Sort by score | [ ] | — | |
-| UX-2.4 | Hide singletons toggle on Results | [ ] | — | |
-| UX-2.5 | Reveal in Finder/Explorer | [ ] | — | |
-| UX-2.6 | Copy paths | [ ] | UX-1.6 | |
-| UX-2.7 | Import JSON results | [ ] | — | |
-| UX-2.8 | Results summary strip | [ ] | — | |
-| UX-2.9 | Tab badge + Scan again | [ ] | UX-1.5 | |
-| UX-2.10 | Pair comparison view | [ ] | UX-2.1 | |
-| UX-3.1 | Settings sections | [ ] | — | |
-| UX-3.2 | Presets | [ ] | UX-3.1 | |
-| UX-3.3 | Field tooltips | [ ] | UX-3.1 | |
-| UX-3.4 | Stale results hint | [ ] | — | |
-| UX-3.5 | Unsaved settings guard | [ ] | — | |
-| UX-3.6 | ORB settings (blocked on core) | [ ] | core ORB | |
-| UX-4.1 | Reason legend | [ ] | — | |
-| UX-4.2 | Softer metric copy | [ ] | — | |
+| UX-2.1 | Thumbnail decode limits | [x] | — | |
+| UX-2.2 | Search by filename | [x] | — | |
+| UX-2.3 | Sort by score | [x] | — | |
+| UX-2.4 | Hide singletons toggle on Results | [x] | — | |
+| UX-2.5 | Reveal in Finder/Explorer | [x] | — | |
+| UX-2.6 | Copy paths | [x] | UX-1.6 | |
+| UX-2.7 | Import JSON results | [x] | — | |
+| UX-2.8 | Results summary strip | [x] | — | |
+| UX-2.9 | Tab badge + Scan again | [x] | UX-1.5 | |
+| UX-2.10 | Pair comparison view | [x] | UX-2.1 | |
+| UX-3.1 | Settings sections | [x] | — | |
+| UX-3.2 | Presets | [x] | UX-3.1 | |
+| UX-3.3 | Field tooltips | [x] | UX-3.1 | |
+| UX-3.4 | Stale results hint | [x] | — | |
+| UX-3.5 | Unsaved settings guard | [x] | — | |
+| UX-3.6 | ORB settings (blocked on core) | [x] | core ORB | |
+| UX-4.1 | Reason legend | [x] | — | |
+| UX-4.2 | Softer metric copy | [x] | — | |
 | UX-5.1 | Keyboard shortcuts | [ ] | — | |
 | UX-5.2 | Double-click open image | [ ] | UX-2.5 | |
 | UX-5.3 | Modal a11y | [ ] | — | |

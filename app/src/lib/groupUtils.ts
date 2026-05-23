@@ -73,6 +73,37 @@ export function filterVisibleGroups(groups: ScanGroup[], settings: AppSettings):
   );
 }
 
+export function filterGroupsBySearch(groups: ScanGroup[], query: string): ScanGroup[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return groups;
+  return groups.filter((group) =>
+    group.images.some((path) => {
+      const base = toBaseName(path).toLowerCase();
+      return path.toLowerCase().includes(needle) || base.includes(needle);
+    }),
+  );
+}
+
+export function countUniqueImages(groups: ScanGroup[]): number {
+  const seen = new Set<string>();
+  for (const group of groups) {
+    for (const path of group.images) {
+      seen.add(path);
+    }
+  }
+  return seen.size;
+}
+
+function compareScores(a: ScanGroup, b: ScanGroup, ascending: boolean): number {
+  const scoreA = a.score;
+  const scoreB = b.score;
+  if (scoreA == null && scoreB == null) return a.id - b.id;
+  if (scoreA == null) return 1;
+  if (scoreB == null) return -1;
+  const byScore = ascending ? scoreA - scoreB : scoreB - scoreA;
+  return byScore !== 0 ? byScore : a.id - b.id;
+}
+
 export function sortGroups(groups: ScanGroup[], sortOption: string): ScanGroup[] {
   const sorted = [...groups];
   switch (sortOption) {
@@ -84,6 +115,12 @@ export function sortGroups(groups: ScanGroup[], sortOption: string): ScanGroup[]
       break;
     case "name_desc":
       sorted.sort((a, b) => compareGroupNames(b, a));
+      break;
+    case "score_asc":
+      sorted.sort((a, b) => compareScores(a, b, true));
+      break;
+    case "score_desc":
+      sorted.sort((a, b) => compareScores(a, b, false));
       break;
     case "count_desc":
     default:

@@ -76,7 +76,13 @@ export type ScanResult = {
 
 export type ScanStatusState = "idle" | "running" | "completed" | "failed" | "cancelled" | "unknown";
 
-export type SortOption = "count_desc" | "count_asc" | "name_asc" | "name_desc";
+export type SortOption =
+  | "count_desc"
+  | "count_asc"
+  | "name_asc"
+  | "name_desc"
+  | "score_desc"
+  | "score_asc";
 
 export type TabBanner = {
   kind: "success" | "error";

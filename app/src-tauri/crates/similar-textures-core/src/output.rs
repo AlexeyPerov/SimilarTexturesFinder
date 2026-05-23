@@ -4,7 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 use serde::Serialize;
-use crate::{GroupReasonKind, PairReasonType};
+use crate::{GroupReasonKind, PairReasonType, ScanResult};
 
 #[derive(Debug, Serialize)]
 pub struct ResultJson {
@@ -96,4 +96,11 @@ pub fn write_result_json(path: &Path, doc: &ResultJson) -> std::io::Result<()> {
     }
 
     Ok(())
+}
+
+/// Read scan results from an exported JSON file.
+pub fn read_result_json(path: &Path) -> Result<ScanResult, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("could not read result file {}: {e}", path.display()))?;
+    serde_json::from_str(&text).map_err(|e| format!("result file is invalid JSON: {e}"))
 }

@@ -1,12 +1,21 @@
 <script lang="ts">
-  import { convertFileSrc } from "@tauri-apps/api/core";
+  import Banner from "$lib/components/Banner.svelte";
+  import ReasonLegend from "$lib/components/ReasonLegend.svelte";
+  import ThumbnailImage from "$lib/components/ThumbnailImage.svelte";
   import { reasonKindLabel, toBaseName } from "$lib/groupUtils";
   import type { GroupPreview, GroupReasonKind, SortOption, TabBanner } from "$lib/types";
-  import Banner from "$lib/components/Banner.svelte";
 
   type Props = {
     hasResult: boolean;
     filteredGroupCount: number;
+    uniqueImageCount: number;
+    lastScanDurationLabel: string | null;
+    staleResults: boolean;
+    searchQuery: string;
+    hideSingleImageGroups: boolean;
+    previewMaxPx: number;
+    running: boolean;
+    canScanAgain: boolean;
     banner: TabBanner;
     sortOption: SortOption;
     availableReasonKinds: GroupReasonKind[];
@@ -16,6 +25,9 @@
     previewGroups: GroupPreview[];
     onDismissBanner?: () => void;
     onExport: () => void;
+    onImport: () => void;
+    onScanAgain: () => void;
+    onToggleHideSingletons: (next: boolean) => void;
     onToggleReasonFilter: (kind: GroupReasonKind) => void;
     onGoToPage: (page: number) => void;
     onOpenGroup: (groupId: number) => void;
@@ -24,6 +36,14 @@
   let {
     hasResult,
     filteredGroupCount,
+    uniqueImageCount,
+    lastScanDurationLabel,
+    staleResults,
+    searchQuery = $bindable(""),
+    hideSingleImageGroups,
+    previewMaxPx,
+    running,
+    canScanAgain,
     banner,
     sortOption = $bindable("count_desc" as SortOption),
     availableReasonKinds,
@@ -33,6 +53,9 @@
     previewGroups,
     onDismissBanner,
     onExport,
+    onImport,
+    onScanAgain,
+    onToggleHideSingletons,
     onToggleReasonFilter,
     onGoToPage,
     onOpenGroup,
@@ -46,32 +69,66 @@
 <section class="panel" aria-label="Results">
   <Banner banner={banner} onDismiss={onDismissBanner} />
 
+  {#if staleResults}
+    <div class="stale-hint" role="status">
+      Settings changed since last scan — run Scan again to apply.
+    </div>
+  {/if}
+
   <div class="results-header">
     <div>
       <h2>Scan Results</h2>
-      <p class="stub">
-        {#if hasResult}
-          {filteredGroupCount} groups loaded
-        {:else}
-          No in-memory scan result yet
-        {/if}
-      </p>
+      {#if hasResult}
+        <p class="summary-strip">
+          {filteredGroupCount} groups · {uniqueImageCount} unique images
+          {#if lastScanDurationLabel}
+            · last scan {lastScanDurationLabel}
+          {/if}
+        </p>
+      {:else}
+        <p class="stub">No in-memory scan result yet</p>
+      {/if}
     </div>
-    <button type="button" class="action-btn" disabled={!hasResult} onclick={() => onExport()}>
-      Export JSON
-    </button>
+    <div class="header-actions">
+      <button type="button" class="action-btn secondary" onclick={() => onImport()}>Import JSON</button>
+      <button type="button" class="action-btn" disabled={!hasResult} onclick={() => onExport()}>Export JSON</button>
+      <button type="button" class="action-btn" disabled={!canScanAgain || running} onclick={() => onScanAgain()}>
+        Scan again
+      </button>
+    </div>
   </div>
 
   {#if !hasResult}
-    <div class="empty-state">Run a scan in the Scan tab to populate results.</div>
+    <div class="empty-state">Run a scan in the Scan tab or import a JSON export to populate results.</div>
   {:else}
     <div class="results-toolbar">
+      <div class="toolbar-row">
+        <label class="toolbar-field search-field">
+          <span>Search</span>
+          <input
+            type="search"
+            placeholder="Filter by filename or path…"
+            bind:value={searchQuery}
+          />
+        </label>
+        <label class="toolbar-field checkbox-field">
+          <input
+            type="checkbox"
+            checked={hideSingleImageGroups}
+            onchange={(e) => onToggleHideSingletons((e.currentTarget as HTMLInputElement).checked)}
+          />
+          <span>Hide single-image groups</span>
+        </label>
+      </div>
+
       <div class="toolbar-row">
         <label class="toolbar-field">
           <span>Sort by</span>
           <select bind:value={sortOption}>
             <option value="count_desc">Count (high to low)</option>
             <option value="count_asc">Count (low to high)</option>
+            <option value="score_desc">Score (high to low)</option>
+            <option value="score_asc">Score (low to high)</option>
             <option value="name_asc">Name (A to Z)</option>
             <option value="name_desc">Name (Z to A)</option>
           </select>
@@ -98,21 +155,15 @@
         </div>
       </div>
 
+      <ReasonLegend />
+
       <div class="pagination-row">
         <div class="pagination-meta">Page {resultsPage} / {totalPages}</div>
         <div class="pagination-controls">
-          <button type="button" class="action-btn tertiary" disabled={resultsPage <= 1} onclick={() => onGoToPage(1)}>
-            First
-          </button>
-          <button type="button" class="action-btn tertiary" disabled={resultsPage <= 1} onclick={() => onGoToPage(resultsPage - 1)}>
-            Prev
-          </button>
-          <button type="button" class="action-btn tertiary" disabled={resultsPage >= totalPages} onclick={() => onGoToPage(resultsPage + 1)}>
-            Next
-          </button>
-          <button type="button" class="action-btn tertiary" disabled={resultsPage >= totalPages} onclick={() => onGoToPage(totalPages)}>
-            Last
-          </button>
+          <button type="button" class="action-btn tertiary" disabled={resultsPage <= 1} onclick={() => onGoToPage(1)}>First</button>
+          <button type="button" class="action-btn tertiary" disabled={resultsPage <= 1} onclick={() => onGoToPage(resultsPage - 1)}>Prev</button>
+          <button type="button" class="action-btn tertiary" disabled={resultsPage >= totalPages} onclick={() => onGoToPage(resultsPage + 1)}>Next</button>
+          <button type="button" class="action-btn tertiary" disabled={resultsPage >= totalPages} onclick={() => onGoToPage(totalPages)}>Last</button>
         </div>
       </div>
     </div>
@@ -138,7 +189,7 @@
               <div class="thumb-grid">
                 {#each group.images as imagePath (imagePath)}
                   <figure class="thumb-item" title={imagePath}>
-                    <img src={convertFileSrc(imagePath)} alt={imagePath} loading="lazy" />
+                    <ThumbnailImage imagePath={imagePath} maxPx={previewMaxPx} alt={imagePath} class="grid-thumb" />
                     <figcaption>{toBaseName(imagePath)}</figcaption>
                   </figure>
                 {/each}
@@ -166,10 +217,19 @@
     min-height: 0;
   }
 
+  .stale-hint {
+    border: 1px solid #6b5a2e;
+    background: rgb(214 170 60 / 12%);
+    color: #f0dfa8;
+    border-radius: 8px;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.82rem;
+  }
+
   .results-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     gap: 1rem;
     flex-wrap: wrap;
   }
@@ -179,10 +239,17 @@
     font-size: 1.02rem;
   }
 
+  .summary-strip,
   .stub {
-    margin: 0;
+    margin: 0.2rem 0 0;
     font-size: 0.8rem;
     color: #b4b6c2;
+  }
+
+  .header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
   }
 
   .action-btn {
@@ -207,6 +274,7 @@
     cursor: not-allowed;
   }
 
+  .action-btn.secondary,
   .action-btn.tertiary {
     border-color: #3f4150;
     background: #2a2b33;
@@ -239,6 +307,20 @@
     gap: 0.4rem;
     font-size: 0.76rem;
     color: #aeb1bf;
+  }
+
+  .search-field input {
+    min-width: 14rem;
+    border: 1px solid #3f4150;
+    border-radius: 6px;
+    background: #1e1f26;
+    color: #f2f3f7;
+    padding: 0.34rem 0.45rem;
+    font-size: 0.78rem;
+  }
+
+  .checkbox-field input {
+    margin: 0;
   }
 
   .toolbar-field select {
@@ -315,9 +397,6 @@
     border-radius: 8px;
     background: #1f2027;
     padding: 0.6rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
   }
 
   .result-card-clickable {
@@ -391,12 +470,8 @@
     overflow: hidden;
   }
 
-  .thumb-item img {
-    display: block;
-    width: 100%;
+  :global(.grid-thumb) {
     height: 76px;
-    object-fit: cover;
-    background: #101116;
   }
 
   .thumb-item figcaption {

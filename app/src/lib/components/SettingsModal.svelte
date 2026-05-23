@@ -1,8 +1,12 @@
 <script lang="ts">
   import type { AppSettings, SettingsValidationErrors } from "$lib/types";
+  import { applySettingsPreset, type SettingsPresetId } from "$lib/settingsPresets";
+  import { settingsHelp } from "$lib/settingsHelp";
+  import { settingsEqual } from "$lib/settingsUtils";
 
   type Props = {
     settingsDraft: AppSettings;
+    savedSettings: AppSettings;
     settingsErrors: SettingsValidationErrors;
     saveMessage: string;
     loadError: string;
@@ -12,28 +16,40 @@
 
   let {
     settingsDraft = $bindable(),
+    savedSettings,
     settingsErrors,
     saveMessage,
     loadError,
     onCancel,
     onSave,
   }: Props = $props();
+
+  function requestClose() {
+    if (!settingsEqual(savedSettings, settingsDraft)) {
+      if (!confirm("Discard unsaved settings changes?")) return;
+    }
+    onCancel();
+  }
+
+  function applyPreset(id: SettingsPresetId) {
+    settingsDraft = applySettingsPreset(id);
+  }
 </script>
 
 <div
   class="overlay"
   role="presentation"
   onclick={(e) => {
-    if (e.target === e.currentTarget) onCancel();
+    if (e.target === e.currentTarget) requestClose();
   }}
   onkeydown={(e) => {
-    if (e.key === "Escape") onCancel();
+    if (e.key === "Escape") requestClose();
   }}
 >
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="modal-header">
       <h2 id="settings-title">Settings</h2>
-      <button type="button" class="modal-close-btn" aria-label="Close settings" onclick={() => onCancel()}>
+      <button type="button" class="modal-close-btn" aria-label="Close settings" onclick={() => requestClose()}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
@@ -42,107 +58,145 @@
     </div>
 
     <div class="modal-body">
-      <div class="settings-grid">
-        <label>
-          <input type="checkbox" bind:checked={settingsDraft.enable_phash} />
-          Enable pHash
-        </label>
-        <label>
-          <input type="checkbox" bind:checked={settingsDraft.enable_ssim} />
-          Enable SSIM
-        </label>
-        <label>
-          <input type="checkbox" bind:checked={settingsDraft.enable_histogram} />
-          Enable histogram
-        </label>
-        <label>
-          <input type="checkbox" bind:checked={settingsDraft.enable_alpha_crop} />
-          Enable alpha crop
-        </label>
-        <label>
-          <input type="checkbox" bind:checked={settingsDraft.enable_rotations} />
-          Enable rotations
-        </label>
-        <label><input type="checkbox" bind:checked={settingsDraft.enable_flip} /> Enable flip</label>
-        <label>
-          <input type="checkbox" bind:checked={settingsDraft.hide_single_image_groups} />
-          Hide groups with 1 image
-        </label>
-
-        <label>
-          Threshold
-          <input type="number" step="0.01" min="0" max="1" bind:value={settingsDraft.threshold} />
-          {#if settingsErrors.threshold}<span class="field-error">{settingsErrors.threshold}</span>{/if}
-        </label>
-        <label>
-          pHash weight
-          <input type="number" step="0.01" min="0" bind:value={settingsDraft.weights.phash} />
-          {#if settingsErrors.phashWeight}<span class="field-error">{settingsErrors.phashWeight}</span>{/if}
-        </label>
-        <label>
-          SSIM weight
-          <input type="number" step="0.01" min="0" bind:value={settingsDraft.weights.ssim} />
-          {#if settingsErrors.ssimWeight}<span class="field-error">{settingsErrors.ssimWeight}</span>{/if}
-        </label>
-        <label>
-          Histogram weight
-          <input type="number" step="0.01" min="0" bind:value={settingsDraft.weights.histogram} />
-          {#if settingsErrors.histogramWeight}<span class="field-error">{settingsErrors.histogramWeight}</span>{/if}
-        </label>
-        <label>
-          Hash algorithm
-          <select bind:value={settingsDraft.hash_algorithm}>
-            <option value="sha256">sha256</option>
-            <option value="sha1">sha1</option>
-            <option value="md5">md5</option>
-          </select>
-        </label>
-        <label>
-          pHash max distance
-          <input type="number" min="0" bind:value={settingsDraft.phash_max_distance} />
-          {#if settingsErrors.phashMaxDistance}<span class="field-error">{settingsErrors.phashMaxDistance}</span>{/if}
-        </label>
-        <label>
-          SSIM threshold
-          <input type="number" step="0.01" min="0" max="1" bind:value={settingsDraft.ssim_threshold} />
-          {#if settingsErrors.ssimThreshold}<span class="field-error">{settingsErrors.ssimThreshold}</span>{/if}
-        </label>
-        <label>
-          Resize size
-          <input type="number" min="1" bind:value={settingsDraft.resize_size} />
-          {#if settingsErrors.resizeSize}<span class="field-error">{settingsErrors.resizeSize}</span>{/if}
-        </label>
-        <label>
-          Histogram bins
-          <input type="number" min="2" bind:value={settingsDraft.hist_bins} />
-          {#if settingsErrors.histBins}<span class="field-error">{settingsErrors.histBins}</span>{/if}
-        </label>
-        <label>
-          Histogram method
-          <select bind:value={settingsDraft.hist_method}>
-            <option value="correlation">correlation</option>
-            <option value="bhattacharyya">bhattacharyya</option>
-          </select>
-        </label>
-        <label>
-          Alpha threshold
-          <input type="number" step="0.01" min="0" max="1" bind:value={settingsDraft.alpha_threshold} />
-          {#if settingsErrors.alphaThreshold}<span class="field-error">{settingsErrors.alphaThreshold}</span>{/if}
-        </label>
-        <label>
-          Max decode dimension (optional)
-          <input
-            type="number"
-            min="1"
-            value={settingsDraft.max_decode_dimension_px ?? ""}
-            oninput={(e) => {
-              const v = (e.currentTarget as HTMLInputElement).value.trim();
-              settingsDraft.max_decode_dimension_px = v ? Number(v) : null;
-            }}
-          />
-          {#if settingsErrors.maxDecodeDimension}<span class="field-error">{settingsErrors.maxDecodeDimension}</span>{/if}
-        </label>
+      <div class="presets-row">
+        <span class="presets-label">Presets</span>
+        <button type="button" class="preset-btn" onclick={() => applyPreset("fast")}>Fast</button>
+        <button type="button" class="preset-btn" onclick={() => applyPreset("balanced")}>Balanced</button>
+        <button type="button" class="preset-btn" onclick={() => applyPreset("strict")}>Strict</button>
+        <span class="presets-hint">Apply a preset, then click Save.</span>
       </div>
+
+      <details class="settings-section" open>
+        <summary>Matching</summary>
+        <div class="settings-grid">
+          <label title={settingsHelp.enable_phash}>
+            <span class="field-label">Enable pHash</span>
+            <input type="checkbox" bind:checked={settingsDraft.enable_phash} />
+          </label>
+          <label title={settingsHelp.enable_ssim}>
+            <span class="field-label">Enable SSIM</span>
+            <input type="checkbox" bind:checked={settingsDraft.enable_ssim} />
+          </label>
+          <label title={settingsHelp.enable_histogram}>
+            <span class="field-label">Enable histogram</span>
+            <input type="checkbox" bind:checked={settingsDraft.enable_histogram} />
+          </label>
+          <label title={settingsHelp.threshold}>
+            <span class="field-label">Threshold</span>
+            <input type="number" step="0.01" min="0" max="1" bind:value={settingsDraft.threshold} />
+            {#if settingsErrors.threshold}<span class="field-error">{settingsErrors.threshold}</span>{/if}
+          </label>
+          <label title={settingsHelp.hide_single_image_groups}>
+            <span class="field-label">Hide groups with 1 image</span>
+            <input type="checkbox" bind:checked={settingsDraft.hide_single_image_groups} />
+          </label>
+        </div>
+      </details>
+
+      <details class="settings-section">
+        <summary>Transforms</summary>
+        <div class="settings-grid">
+          <label title={settingsHelp.enable_alpha_crop}>
+            <span class="field-label">Enable alpha crop</span>
+            <input type="checkbox" bind:checked={settingsDraft.enable_alpha_crop} />
+          </label>
+          <label title={settingsHelp.enable_rotations}>
+            <span class="field-label">Enable rotations</span>
+            <input type="checkbox" bind:checked={settingsDraft.enable_rotations} />
+          </label>
+          <label title={settingsHelp.enable_flip}>
+            <span class="field-label">Enable flip</span>
+            <input type="checkbox" bind:checked={settingsDraft.enable_flip} />
+          </label>
+        </div>
+      </details>
+
+      <details class="settings-section">
+        <summary>Weights &amp; thresholds</summary>
+        <div class="settings-grid">
+          <label title={settingsHelp.phash_weight}>
+            <span class="field-label">pHash weight</span>
+            <input type="number" step="0.01" min="0" bind:value={settingsDraft.weights.phash} />
+            {#if settingsErrors.phashWeight}<span class="field-error">{settingsErrors.phashWeight}</span>{/if}
+          </label>
+          <label title={settingsHelp.ssim_weight}>
+            <span class="field-label">SSIM weight</span>
+            <input type="number" step="0.01" min="0" bind:value={settingsDraft.weights.ssim} />
+            {#if settingsErrors.ssimWeight}<span class="field-error">{settingsErrors.ssimWeight}</span>{/if}
+          </label>
+          <label title={settingsHelp.histogram_weight}>
+            <span class="field-label">Histogram weight</span>
+            <input type="number" step="0.01" min="0" bind:value={settingsDraft.weights.histogram} />
+            {#if settingsErrors.histogramWeight}<span class="field-error">{settingsErrors.histogramWeight}</span>{/if}
+          </label>
+          <label title={settingsHelp.phash_max_distance}>
+            <span class="field-label">pHash max distance</span>
+            <input type="number" min="0" bind:value={settingsDraft.phash_max_distance} />
+            {#if settingsErrors.phashMaxDistance}<span class="field-error">{settingsErrors.phashMaxDistance}</span>{/if}
+          </label>
+          <label title={settingsHelp.ssim_threshold}>
+            <span class="field-label">SSIM threshold</span>
+            <input type="number" step="0.01" min="0" max="1" bind:value={settingsDraft.ssim_threshold} />
+            {#if settingsErrors.ssimThreshold}<span class="field-error">{settingsErrors.ssimThreshold}</span>{/if}
+          </label>
+        </div>
+      </details>
+
+      <details class="settings-section">
+        <summary>Performance</summary>
+        <div class="settings-grid">
+          <label title={settingsHelp.resize_size}>
+            <span class="field-label">Resize size</span>
+            <input type="number" min="1" bind:value={settingsDraft.resize_size} />
+            {#if settingsErrors.resizeSize}<span class="field-error">{settingsErrors.resizeSize}</span>{/if}
+          </label>
+          <label title={settingsHelp.hist_bins}>
+            <span class="field-label">Histogram bins</span>
+            <input type="number" min="2" bind:value={settingsDraft.hist_bins} />
+            {#if settingsErrors.histBins}<span class="field-error">{settingsErrors.histBins}</span>{/if}
+          </label>
+          <label title={settingsHelp.hist_method}>
+            <span class="field-label">Histogram method</span>
+            <select bind:value={settingsDraft.hist_method}>
+              <option value="correlation">correlation</option>
+              <option value="bhattacharyya">bhattacharyya</option>
+            </select>
+          </label>
+          <label title={settingsHelp.alpha_threshold}>
+            <span class="field-label">Alpha threshold</span>
+            <input type="number" step="0.01" min="0" max="1" bind:value={settingsDraft.alpha_threshold} />
+            {#if settingsErrors.alphaThreshold}<span class="field-error">{settingsErrors.alphaThreshold}</span>{/if}
+          </label>
+          <label title={settingsHelp.max_decode_dimension}>
+            <span class="field-label">Max decode dimension (optional)</span>
+            <input
+              type="number"
+              min="1"
+              value={settingsDraft.max_decode_dimension_px ?? ""}
+              oninput={(e) => {
+                const v = (e.currentTarget as HTMLInputElement).value.trim();
+                settingsDraft.max_decode_dimension_px = v ? Number(v) : null;
+              }}
+            />
+            {#if settingsErrors.maxDecodeDimension}<span class="field-error">{settingsErrors.maxDecodeDimension}</span>{/if}
+          </label>
+        </div>
+      </details>
+
+      <details class="settings-section">
+        <summary>Advanced</summary>
+        <div class="settings-grid">
+          <label title={settingsHelp.hash_algorithm}>
+            <span class="field-label">Hash algorithm</span>
+            <select bind:value={settingsDraft.hash_algorithm}>
+              <option value="sha256">sha256</option>
+              <option value="sha1">sha1</option>
+              <option value="md5">md5</option>
+            </select>
+          </label>
+        </div>
+        <p class="orb-note">{settingsHelp.orb_note}</p>
+      </details>
 
       {#if saveMessage}
         <p class="save-ok">{saveMessage}</p>
@@ -153,7 +207,7 @@
     </div>
 
     <div class="modal-footer">
-      <button type="button" class="action-btn secondary" onclick={() => onCancel()}>Cancel</button>
+      <button type="button" class="action-btn secondary" onclick={() => requestClose()}>Cancel</button>
       <button type="button" class="action-btn" onclick={() => onSave()}>Save</button>
     </div>
   </div>
@@ -219,10 +273,59 @@
     gap: 0.8rem;
   }
 
+  .presets-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .presets-label {
+    font-size: 0.76rem;
+    color: #aeb1bf;
+    font-weight: 600;
+  }
+
+  .preset-btn {
+    border: 1px solid #3f4150;
+    border-radius: 999px;
+    background: #1e1f26;
+    color: #d7d8e0;
+    font-size: 0.74rem;
+    padding: 0.22rem 0.6rem;
+    cursor: pointer;
+  }
+
+  .preset-btn:hover {
+    border-color: #5c7cfa;
+    color: #fff;
+  }
+
+  .presets-hint {
+    font-size: 0.72rem;
+    color: #8b8d9a;
+  }
+
+  .settings-section {
+    border: 1px solid #34353f;
+    border-radius: 8px;
+    background: #1f2027;
+    padding: 0.55rem 0.65rem;
+  }
+
+  .settings-section summary {
+    cursor: pointer;
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: #d9dbea;
+    margin-bottom: 0.35rem;
+  }
+
   .settings-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 0.55rem;
+    margin-top: 0.45rem;
   }
 
   .settings-grid label {
@@ -233,9 +336,13 @@
     color: #d7d8e0;
   }
 
+  .field-label {
+    font-weight: 520;
+  }
+
   .settings-grid label input[type="checkbox"] {
     width: auto;
-    margin-right: 0.4rem;
+    align-self: flex-start;
   }
 
   .settings-grid label input[type="number"],
@@ -248,6 +355,12 @@
     background: #1e1f26;
     color: #f2f3f7;
     font-size: 0.82rem;
+  }
+
+  .orb-note {
+    margin: 0.45rem 0 0;
+    font-size: 0.72rem;
+    color: #8b8d9a;
   }
 
   .field-error {
