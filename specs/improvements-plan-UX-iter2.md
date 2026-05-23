@@ -87,8 +87,8 @@ Splitting the monolith makes later UX work safer and enables targeted performanc
 
 **Verification:**
 
-- [ ] App behavior unchanged (manual smoke: scan, results, settings, group detail).
-- [ ] `npm run check` passes.
+- [x] App behavior unchanged (manual smoke: scan, results, settings, group detail).
+- [x] `npm run check` passes.
 
 ---
 
@@ -114,7 +114,7 @@ Replace raw status strings (`idle`, `running`, `completed`, …) with user-facin
 
 **Verification:**
 
-- [ ] Status pill shows friendly text during and after scan.
+- [x] Status pill shows friendly text during and after scan.
 
 ### UX-1.2 Progress bar + phase labels
 
@@ -138,9 +138,9 @@ Optional follow-up (separate item): emit pairwise progress from core (`ScanEvent
 
 **Verification:**
 
-- [ ] During ingest, bar reflects `processed/total`.
-- [ ] Phase label updates through a full scan on `test-images/`.
-- [ ] Elapsed timer visible while running; stops on finish.
+- [x] During ingest, bar reflects `processed/total`.
+- [x] Phase label updates through a full scan on `test-images/`.
+- [x] Elapsed timer visible while running; stops on finish.
 
 ### UX-1.3 Inline validation for empty input folder
 
@@ -155,7 +155,7 @@ When Run Scan is clicked with empty `inputDir`:
 
 **Verification:**
 
-- [ ] Empty folder → visible inline message; no scan started.
+- [x] Empty folder → visible inline message; no scan started.
 
 ### UX-1.4 Improve folder picker affordance
 
@@ -169,8 +169,8 @@ Optional: drag-and-drop folder onto scan panel (Tauri/webview drop APIs).
 
 **Verification:**
 
-- [ ] Button purpose is obvious without hover tooltip.
-- [ ] If DnD implemented: dropping a folder sets `inputDir`.
+- [x] Button purpose is obvious without hover tooltip.
+- [x] If DnD implemented: dropping a folder sets `inputDir`.
 
 ### UX-1.5 Persist last input folder
 
@@ -181,12 +181,14 @@ Persist `lastInputDir` in app config (extend `settings.json` or separate `ui-sta
 - Load on mount; pre-fill path field.
 - Save when scan starts successfully (or when folder chosen — pick one, document in PR).
 
+**Implementation note:** Saved to `ui-state.json` when scan starts and when folder is chosen via Browse or drag-drop.
+
 **Depends on:** none
 
 **Verification:**
 
-- [ ] Restart app → last folder still shown.
-- [ ] Invalid/missing path on disk: field shows saved value; scan fails gracefully with clear message.
+- [x] Restart app → last folder still shown.
+- [x] Invalid/missing path on disk: field shows saved value; scan fails gracefully with clear message.
 
 ### UX-1.6 Toast / banner feedback for scan-adjacent actions
 
@@ -206,8 +208,8 @@ Avoid routing export success only to Scan logs.
 
 **Verification:**
 
-- [ ] Export from Results shows confirmation on Results tab.
-- [ ] Copy logs shows confirmation.
+- [x] Export from Results shows confirmation on Results tab.
+- [x] Copy logs shows confirmation.
 
 ### UX-1.7 Scan failure visibility
 
@@ -223,7 +225,7 @@ On `scan-finished` with `failed`:
 
 **Verification:**
 
-- [ ] Induced failure → user stays on Scan with visible error.
+- [x] Induced failure → user stays on Scan with visible error.
 
 ---
 
@@ -664,14 +666,14 @@ Mark status: `[ ]` not started · `[~]` in progress · `[x]` done
 
 | ID | Title | Status | Depends on | PR |
 |----|-------|--------|------------|-----|
-| UX-0.1 | Extract components | [ ] | — | |
-| UX-1.1 | Human-readable status | [ ] | — | |
-| UX-1.2 | Progress bar + phases + elapsed | [ ] | — | |
-| UX-1.3 | Inline empty-folder validation | [ ] | — | |
-| UX-1.4 | Browse / DnD folder | [ ] | — | |
-| UX-1.5 | Persist last folder | [ ] | — | |
-| UX-1.6 | Toasts / banners | [ ] | — | |
-| UX-1.7 | Scan failure visibility | [ ] | UX-1.6 | |
+| UX-0.1 | Extract components | [x] | — | |
+| UX-1.1 | Human-readable status | [x] | — | |
+| UX-1.2 | Progress bar + phases + elapsed | [x] | — | |
+| UX-1.3 | Inline empty-folder validation | [x] | — | |
+| UX-1.4 | Browse / DnD folder | [x] | — | |
+| UX-1.5 | Persist last folder | [x] | — | |
+| UX-1.6 | Toasts / banners | [x] | — | |
+| UX-1.7 | Scan failure visibility | [x] | UX-1.6 | |
 | UX-2.1 | Thumbnail decode limits | [ ] | — | |
 | UX-2.2 | Search by filename | [ ] | — | |
 | UX-2.3 | Sort by score | [ ] | — | |

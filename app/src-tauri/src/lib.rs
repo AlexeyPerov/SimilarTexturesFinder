@@ -12,6 +12,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 const SETTINGS_FILE: &str = "settings.json";
 const SETTINGS_SCHEMA_VERSION: u32 = 1;
+const UI_STATE_FILE: &str = "ui-state.json";
+const UI_STATE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +52,18 @@ struct StartScanResponse {
 #[serde(rename_all = "camelCase")]
 struct ExportResponse {
     path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct UiStateResponse {
+    last_input_dir: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct StoredUiStateV1 {
+    version: u32,
+    last_input_dir: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -134,10 +148,59 @@ struct ScanFinishedEventPayload {
     message: Option<String>,
 }
 
-fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn app_config_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join(SETTINGS_FILE))
+    Ok(dir)
+}
+
+fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app_config_dir(app)?.join(SETTINGS_FILE))
+}
+
+fn ui_state_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app_config_dir(app)?.join(UI_STATE_FILE))
+}
+
+fn load_ui_state_from_path(path: &Path) -> UiStateResponse {
+    if !path.exists() {
+        return UiStateResponse {
+            last_input_dir: None,
+        };
+    }
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(_) => {
+            return UiStateResponse {
+                last_input_dir: None,
+            };
+        }
+    };
+    match serde_json::from_str::<StoredUiStateV1>(&text) {
+        Ok(state) if state.version == UI_STATE_SCHEMA_VERSION => UiStateResponse {
+            last_input_dir: state
+                .last_input_dir
+                .filter(|value| !value.trim().is_empty()),
+        },
+        _ => UiStateResponse {
+            last_input_dir: None,
+        },
+    }
+}
+
+fn save_last_input_dir_to_path(path: &Path, input_dir: &str) -> Result<(), String> {
+    let trimmed = input_dir.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    let payload = StoredUiStateV1 {
+        version: UI_STATE_SCHEMA_VERSION,
+        last_input_dir: Some(trimmed.to_string()),
+    };
+    let text = serde_json::to_string_pretty(&payload)
+        .map_err(|e| format!("could not serialize ui state: {e}"))?;
+    std::fs::write(path, text)
+        .map_err(|e| format!("could not write ui state file {}: {e}", path.display()))
 }
 
 fn load_settings_from_path(path: &Path) -> Result<Config, String> {
@@ -371,6 +434,18 @@ impl ScanCallbacks for EventCallbacks {
 }
 
 #[tauri::command]
+fn load_ui_state(app: AppHandle) -> Result<UiStateResponse, String> {
+    let path = ui_state_path(&app)?;
+    Ok(load_ui_state_from_path(&path))
+}
+
+#[tauri::command]
+fn save_last_input_dir(app: AppHandle, input_dir: String) -> Result<(), String> {
+    let path = ui_state_path(&app)?;
+    save_last_input_dir_to_path(&path, &input_dir)
+}
+
+#[tauri::command]
 fn load_settings(app: AppHandle) -> Result<Config, String> {
     let path = settings_path(&app)?;
     load_settings_from_path(&path)
@@ -436,6 +511,9 @@ fn start_scan(
     let input_dir = request.input_dir.trim();
     let input = PathBuf::from(input_dir);
     let threads = request.threads.unwrap_or_else(default_threads).max(1);
+    if let Ok(ui_path) = ui_state_path(&app) {
+        let _ = save_last_input_dir_to_path(&ui_path, input_dir);
+    }
     let cfg = load_settings(app.clone())?;
     emit_log(
         &app,
@@ -584,6 +662,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppSlots::default())
         .invoke_handler(tauri::generate_handler![
+            load_ui_state,
+            save_last_input_dir,
             load_settings,
             save_settings,
             scan_status,
@@ -663,6 +743,15 @@ mod tests {
         save_settings_to_path(&path, &cfg).expect("save");
         let loaded = load_settings_from_path(&path).expect("load");
         assert!((loaded.threshold - 0.77).abs() < 1e-9);
+    }
+
+    #[test]
+    fn save_and_load_ui_state_roundtrip() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("ui-state.json");
+        save_last_input_dir_to_path(&path, "/tmp/textures").expect("save");
+        let loaded = load_ui_state_from_path(&path);
+        assert_eq!(loaded.last_input_dir.as_deref(), Some("/tmp/textures"));
     }
 
     #[test]
