@@ -1,4 +1,4 @@
-# Similar Textures
+# Similar Textures Finder
 
 Single desktop application built with **Tauri 2 + Svelte 5 + Rust core**.
 

@@ -1,7 +1,7 @@
 [package]
 name = "similar_textures_app"
 version = "0.1.0"
-description = "Similar Textures desktop app host"
+description = "Similar Textures Finder desktop app host"
 edition = "2021"
 
 [lib]

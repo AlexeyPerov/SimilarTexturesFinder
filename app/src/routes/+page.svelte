@@ -580,7 +580,7 @@
   <div class="app">
     <header class="header">
       <div class="header-text">
-        <h1>Similar Textures</h1>
+        <h1>Similar Textures Finder</h1>
         <div class="tabs" role="tablist" aria-label="Main sections">
           <button
             type="button"
@@ -812,19 +812,13 @@
 
           <div class="results-grid">
             {#each previewGroups as group (group.id)}
-              <article
-                class="result-card result-card-clickable"
-                role="button"
-                tabindex="0"
-                aria-label={`Open details for ${group.title}`}
-                onclick={() => openGroupDetails(group.id)}
-                onkeydown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    openGroupDetails(group.id);
-                  }
-                }}
-              >
+              <article class="result-card result-card-clickable">
+                <button
+                  type="button"
+                  class="result-card-button"
+                  aria-label={`Open details for ${group.title}`}
+                  onclick={() => openGroupDetails(group.id)}
+                >
                 <header class="result-card-header">
                   <div class="result-title">{group.title}</div>
                   <div class="reason-badge">{reasonKindLabel(group.reasonKind)}</div>
@@ -842,6 +836,7 @@
                 {#if group.hiddenCount > 0}
                   <div class="stub">+ {group.hiddenCount} more image(s)</div>
                 {/if}
+                </button>
               </article>
             {/each}
           </div>
@@ -1562,7 +1557,6 @@
   }
 
   .result-card-clickable {
-    cursor: pointer;
     transition: border-color 0.14s ease;
   }
 
@@ -1570,9 +1564,24 @@
     border-color: #5c7cfa;
   }
 
-  .result-card-clickable:focus-visible {
+  .result-card-button {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
+
+  .result-card-button:focus-visible {
     outline: 2px solid #5c7cfa;
-    outline-offset: 2px;
+    outline-offset: 4px;
+    border-radius: 6px;
   }
 
   .result-card-header {

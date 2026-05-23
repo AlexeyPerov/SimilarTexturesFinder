@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Similar Textures",
+  "productName": "Similar Textures Finder",
   "version": "0.1.0",
   "identifier": "dev.similartextures.app",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Similar Textures",
+        "title": "Similar Textures Finder",
         "width": 1280,
         "height": 820,
         "minWidth": 1000,
