@@ -40,6 +40,8 @@ pub struct Config {
     pub orb_match_threshold: Option<f64>,
     #[serde(default)]
     pub max_decode_dimension_px: Option<u32>,
+    #[serde(default = "default_hide_single_image_groups")]
+    pub hide_single_image_groups: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +79,10 @@ fn default_hist_method() -> String {
 
 fn default_alpha_threshold() -> f64 {
     0.05
+}
+
+fn default_hide_single_image_groups() -> bool {
+    true
 }
 
 #[derive(Debug)]
@@ -174,7 +180,8 @@ mod tests {
             "enable_alpha_crop": false,
             "enable_rotations": false,
             "threshold": 0.85,
-            "weights": { "phash": 0.35, "ssim": 0.45, "histogram": 0.2 }
+            "weights": { "phash": 0.35, "ssim": 0.45, "histogram": 0.2 },
+            "hide_single_image_groups": true
         }"#;
         let cfg: Config = serde_json::from_str(json).unwrap();
         validate(&cfg).unwrap();
@@ -189,7 +196,8 @@ mod tests {
             "enable_ssim": true,
             "enable_histogram": true,
             "threshold": 1.1,
-            "weights": { "phash": 0.35, "ssim": 0.45, "histogram": 0.2 }
+            "weights": { "phash": 0.35, "ssim": 0.45, "histogram": 0.2 },
+            "hide_single_image_groups": true
         }"#;
         let cfg: Config = serde_json::from_str(json).unwrap();
         assert!(matches!(

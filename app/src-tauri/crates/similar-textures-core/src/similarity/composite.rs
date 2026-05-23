@@ -63,7 +63,8 @@ mod tests {
             "enable_ssim": true,
             "enable_histogram": true,
             "threshold": 0.5,
-            "weights": { "phash": 0.35, "ssim": 0.45, "histogram": 0.2 }
+            "weights": { "phash": 0.35, "ssim": 0.45, "histogram": 0.2 },
+            "hide_single_image_groups": true
         }"#;
         serde_json::from_str(json).unwrap()
     }

@@ -4,6 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 use serde::Serialize;
+use crate::{GroupReasonKind, PairReasonType};
 
 #[derive(Debug, Serialize)]
 pub struct ResultJson {
@@ -16,6 +17,41 @@ pub struct GroupRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
     pub images: Vec<String>,
+    pub reason_kind: GroupReasonKind,
+    pub reasons: Vec<GroupPairReasonRecord>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GroupPairReasonRecord {
+    pub left: String,
+    pub right: String,
+    #[serde(rename = "type")]
+    pub reason_type: PairReasonType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub composite_score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phash: Option<MetricEvidenceRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssim: Option<MetricEvidenceRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub histogram: Option<MetricEvidenceRecord>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MetricEvidenceRecord {
+    pub score: f64,
+    pub raw: f64,
+    pub valid: bool,
+}
+
+impl From<crate::MetricEvidenceDto> for MetricEvidenceRecord {
+    fn from(value: crate::MetricEvidenceDto) -> Self {
+        Self {
+            score: value.score,
+            raw: value.raw,
+            valid: value.valid,
+        }
+    }
 }
 
 /// Write JSON atomically: temp file in target directory, sync, rename.

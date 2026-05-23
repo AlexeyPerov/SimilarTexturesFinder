@@ -14,9 +14,25 @@ use crate::vertex::Vertex;
 pub struct PairwiseStats {
     pub score_cache: HashMap<(usize, usize), f64>,
     pub composite_edges: Vec<(usize, usize)>,
+    pub reason_cache: HashMap<(usize, usize), PairReason>,
 }
 
-fn pair_key(i: usize, j: usize) -> (usize, usize) {
+#[derive(Debug, Clone, Copy)]
+pub struct MetricEvidence {
+    pub score: f64,
+    pub raw: f64,
+    pub valid: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct PairReason {
+    pub composite_score: f64,
+    pub phash: Option<MetricEvidence>,
+    pub ssim: Option<MetricEvidence>,
+    pub histogram: Option<MetricEvidence>,
+}
+
+pub fn pair_key(i: usize, j: usize) -> (usize, usize) {
     if i < j {
         (i, j)
     } else {
@@ -40,7 +56,14 @@ pub fn pairwise_compare(
         .build()
         .expect("rayon thread pool");
 
-    let results: Vec<(usize, usize, Option<f64>)> = pool.install(|| {
+    let results: Vec<(
+        usize,
+        usize,
+        Option<f64>,
+        Option<MetricResult>,
+        Option<MetricResult>,
+        Option<MetricResult>,
+    )> = pool.install(|| {
         (0..n)
             .into_par_iter()
             .flat_map(|i| {
@@ -54,25 +77,22 @@ pub fn pairwise_compare(
                         if rep_i == digest_rep[j] {
                             return None;
                         }
-                        let fs_out =
-                            if let (Some(fa), Some(fb)) =
-                                (&vertices[i].features, &vertices[j].features)
-                            {
-                                let ph = cfg
-                                    .enable_phash
-                                    .then(|| max_phash(fa, fb, cfg.phash_max_distance));
-                                let ss = cfg
-                                    .enable_ssim
-                                    .then(|| max_ssim(fa, fb, cfg.ssim_threshold));
-                                let hi = cfg
-                                    .enable_histogram
-                                    .then(|| max_hist(fa, fb, hist_method));
-                                combine(cfg, ph, ss, hi)
-                            } else {
-                                None
-                            };
-
-                        Some((i, j, fs_out))
+                        if let (Some(fa), Some(fb)) = (&vertices[i].features, &vertices[j].features)
+                        {
+                            let ph = cfg
+                                .enable_phash
+                                .then(|| max_phash(fa, fb, cfg.phash_max_distance));
+                            let ss = cfg
+                                .enable_ssim
+                                .then(|| max_ssim(fa, fb, cfg.ssim_threshold));
+                            let hi = cfg
+                                .enable_histogram
+                                .then(|| max_hist(fa, fb, hist_method));
+                            let fs_out = combine(cfg, ph, ss, hi);
+                            Some((i, j, fs_out, ph, ss, hi))
+                        } else {
+                            Some((i, j, None, None, None, None))
+                        }
                     })
             })
             .collect()
@@ -80,12 +100,22 @@ pub fn pairwise_compare(
 
     let mut score_cache = HashMap::new();
     let mut composite_edges = Vec::new();
+    let mut reason_cache = HashMap::new();
 
-    for (i, j, fs) in results {
+    for (i, j, fs, ph, ss, hi) in results {
         if let Some(fs) = fs {
             if fs > thr {
                 composite_edges.push((i, j));
                 score_cache.insert(pair_key(i, j), fs);
+                reason_cache.insert(
+                    pair_key(i, j),
+                    PairReason {
+                        composite_score: fs,
+                        phash: ph.map(metric_to_evidence),
+                        ssim: ss.map(metric_to_evidence),
+                        histogram: hi.map(metric_to_evidence),
+                    },
+                );
             }
         }
     }
@@ -93,6 +123,15 @@ pub fn pairwise_compare(
     PairwiseStats {
         score_cache,
         composite_edges,
+        reason_cache,
+    }
+}
+
+fn metric_to_evidence(metric: MetricResult) -> MetricEvidence {
+    MetricEvidence {
+        score: f64::from(metric.score),
+        raw: f64::from(metric.raw),
+        valid: metric.valid,
     }
 }
 

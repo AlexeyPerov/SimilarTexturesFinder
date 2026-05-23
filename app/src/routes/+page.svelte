@@ -33,6 +33,7 @@
     orb_max_features: number | null;
     orb_match_threshold: number | null;
     max_decode_dimension_px: number | null;
+    hide_single_image_groups: boolean;
   };
 
   type SettingsValidationErrors = {
@@ -48,10 +49,33 @@
     maxDecodeDimension?: string;
   };
 
+  type GroupReasonKind = "singleton" | "hash" | "composite" | "mixed";
+
+  type PairReasonType = "hash" | "composite";
+
+  type MetricEvidence = {
+    score: number;
+    raw: number;
+    valid: boolean;
+  };
+
+  type GroupPairReason = {
+    left: string;
+    right: string;
+    type: PairReasonType;
+    composite_score?: number;
+    phash?: MetricEvidence;
+    ssim?: MetricEvidence;
+    histogram?: MetricEvidence;
+  };
+
   type ScanGroup = {
     id: number;
+    name?: string;
     score: number | null;
     images: string[];
+    reason_kind: GroupReasonKind;
+    reasons: GroupPairReason[];
   };
 
   type ScanResult = {
@@ -99,6 +123,10 @@
 
   const maxLogLines = 1500;
   const maxResultThumbs = 10;
+  const maxGroupsPerPage = 15;
+  const reasonKindOrder: GroupReasonKind[] = ["singleton", "hash", "composite", "mixed"];
+
+  type SortOption = "count_desc" | "count_asc" | "name_asc" | "name_desc";
 
   let activeTab = $state<"scan" | "results">("scan");
   let showSettings = $state(false);
@@ -113,6 +141,10 @@
   let saveMessage = $state("");
   let loadError = $state("");
   let settingsErrors = $state<SettingsValidationErrors>({});
+  let selectedReasonKinds = $state<GroupReasonKind[]>([]);
+  let sortOption = $state<SortOption>("count_desc");
+  let resultsPage = $state(1);
+  let selectedGroupId = $state<number | null>(null);
 
   const initialSettings: AppSettings = {
     enable_phash: true,
@@ -134,6 +166,7 @@
     orb_max_features: null,
     orb_match_threshold: null,
     max_decode_dimension_px: null,
+    hide_single_image_groups: true,
   };
   let settings = $state<AppSettings>(structuredClone(initialSettings));
   let settingsDraft = $state<AppSettings>(structuredClone(initialSettings));
@@ -318,17 +351,175 @@
     }
   }
 
+  function toBaseName(path: string) {
+    return path.split(/[\\/]/).at(-1) ?? path;
+  }
+
+  function groupTitle(group: Pick<ScanGroup, "id" | "name">) {
+    const explicit = group.name?.trim();
+    return explicit && explicit.length > 0 ? explicit : `Group #${group.id}`;
+  }
+
+  function reasonKindLabel(kind: GroupReasonKind) {
+    switch (kind) {
+      case "singleton":
+        return "Singleton";
+      case "hash":
+        return "Hash";
+      case "composite":
+        return "Composite";
+      case "mixed":
+        return "Mixed";
+      default:
+        return kind;
+    }
+  }
+
+  function pairReasonTypeLabel(reasonType: PairReasonType) {
+    switch (reasonType) {
+      case "hash":
+        return "Hash";
+      case "composite":
+        return "Composite";
+      default:
+        return reasonType;
+    }
+  }
+
+  function formatMetricValue(value: number) {
+    return Number.isFinite(value) ? value.toFixed(3) : String(value);
+  }
+
+  function hasReasonFilter(kind: GroupReasonKind) {
+    return selectedReasonKinds.includes(kind);
+  }
+
+  function toggleReasonFilter(kind: GroupReasonKind) {
+    if (hasReasonFilter(kind)) {
+      selectedReasonKinds = selectedReasonKinds.filter((item) => item !== kind);
+      return;
+    }
+    selectedReasonKinds = [...selectedReasonKinds, kind];
+  }
+
+  function goToPage(nextPage: number) {
+    resultsPage = Math.max(1, Math.min(totalPages, nextPage));
+  }
+
+  function openGroupDetails(groupId: number) {
+    selectedGroupId = groupId;
+  }
+
+  function closeGroupDetails() {
+    selectedGroupId = null;
+  }
+
+  function compareGroupNames(a: ScanGroup, b: ScanGroup) {
+    const nameA = a.name?.trim();
+    const nameB = b.name?.trim();
+    if (nameA && nameB) {
+      const byName = nameA.localeCompare(nameB, undefined, { sensitivity: "base" });
+      return byName !== 0 ? byName : a.id - b.id;
+    }
+    if (nameA && !nameB) return -1;
+    if (!nameA && nameB) return 1;
+    return a.id - b.id;
+  }
+
   function groupedPreview(groups: ScanGroup[]) {
     return groups.map((g) => ({
       id: g.id,
+      title: groupTitle(g),
       scoreLabel: g.score == null ? "-" : g.score.toFixed(3),
       images: g.images.slice(0, maxResultThumbs),
       hiddenCount: Math.max(0, g.images.length - maxResultThumbs),
       count: g.images.length,
+      reasonKind: g.reason_kind,
     }));
   }
 
-  let previewGroups = $derived(result ? groupedPreview(result.groups) : []);
+  let sourceGroups = $derived(result?.groups ?? []);
+  let visibleGroups = $derived(
+    sourceGroups.filter((group) => !settings.hide_single_image_groups || group.images.length > 1),
+  );
+  let availableReasonKinds = $derived.by(() => {
+    const seen = new Set<GroupReasonKind>();
+    for (const group of visibleGroups) {
+      seen.add(group.reason_kind);
+    }
+    return reasonKindOrder.filter((kind) => seen.has(kind));
+  });
+  let filteredSortedGroups = $derived.by(() => {
+    const activeFilters = new Set(selectedReasonKinds);
+    const filtered =
+      activeFilters.size === 0
+        ? visibleGroups
+        : visibleGroups.filter((group) => activeFilters.has(group.reason_kind));
+
+    const sorted = [...filtered];
+    switch (sortOption) {
+      case "count_asc":
+        sorted.sort((a, b) => a.images.length - b.images.length || a.id - b.id);
+        break;
+      case "name_asc":
+        sorted.sort(compareGroupNames);
+        break;
+      case "name_desc":
+        sorted.sort((a, b) => compareGroupNames(b, a));
+        break;
+      case "count_desc":
+      default:
+        sorted.sort((a, b) => b.images.length - a.images.length || a.id - b.id);
+        break;
+    }
+    return sorted;
+  });
+  let totalPages = $derived(Math.max(1, Math.ceil(filteredSortedGroups.length / maxGroupsPerPage)));
+  let pageStartIndex = $derived((resultsPage - 1) * maxGroupsPerPage);
+  let pagedGroups = $derived(
+    filteredSortedGroups.slice(pageStartIndex, pageStartIndex + maxGroupsPerPage),
+  );
+  let previewGroups = $derived(groupedPreview(pagedGroups));
+  let selectedGroup = $derived.by(() => {
+    if (selectedGroupId == null) return null;
+    return filteredSortedGroups.find((group) => group.id === selectedGroupId) ?? null;
+  });
+
+  $effect(() => {
+    if (!result) {
+      resultsPage = 1;
+      return;
+    }
+    result.groups;
+    settings.hide_single_image_groups;
+    sortOption;
+    selectedReasonKinds.join(",");
+    resultsPage = 1;
+  });
+
+  $effect(() => {
+    if (resultsPage > totalPages) {
+      resultsPage = totalPages;
+      return;
+    }
+    if (resultsPage < 1) {
+      resultsPage = 1;
+    }
+  });
+
+  $effect(() => {
+    const allowed = new Set(availableReasonKinds);
+    const next = selectedReasonKinds.filter((kind) => allowed.has(kind));
+    if (next.length !== selectedReasonKinds.length) {
+      selectedReasonKinds = next;
+    }
+  });
+
+  $effect(() => {
+    if (selectedGroupId == null) return;
+    const exists = filteredSortedGroups.some((group) => group.id === selectedGroupId);
+    if (!exists) selectedGroupId = null;
+  });
 
   onMount(() => {
     let unlistenLog: UnlistenFn | undefined;
@@ -528,7 +719,7 @@
             <h2>Scan Results</h2>
             <p class="stub">
               {#if result}
-                {result.groups.length} groups loaded
+                {filteredSortedGroups.length} groups loaded
               {:else}
                 No in-memory scan result yet
               {/if}
@@ -547,11 +738,96 @@
         {#if !result}
           <div class="empty-state">Run a scan in the Scan tab to populate results.</div>
         {:else}
+          <div class="results-toolbar">
+            <div class="toolbar-row">
+              <label class="toolbar-field">
+                <span>Sort by</span>
+                <select bind:value={sortOption}>
+                  <option value="count_desc">Count (high to low)</option>
+                  <option value="count_asc">Count (low to high)</option>
+                  <option value="name_asc">Name (A to Z)</option>
+                  <option value="name_desc">Name (Z to A)</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="toolbar-row">
+              <span class="toolbar-label">Reason filter</span>
+              <div class="reason-chips">
+                {#if availableReasonKinds.length === 0}
+                  <span class="stub">No reason tags available</span>
+                {:else}
+                  {#each availableReasonKinds as kind (kind)}
+                    <button
+                      type="button"
+                      class="chip"
+                      class:chip-active={hasReasonFilter(kind)}
+                      onclick={() => toggleReasonFilter(kind)}
+                    >
+                      {reasonKindLabel(kind)}
+                    </button>
+                  {/each}
+                {/if}
+              </div>
+            </div>
+
+            <div class="pagination-row">
+              <div class="pagination-meta">Page {resultsPage} / {totalPages}</div>
+              <div class="pagination-controls">
+                <button
+                  type="button"
+                  class="action-btn tertiary"
+                  disabled={resultsPage <= 1}
+                  onclick={() => goToPage(1)}
+                >
+                  First
+                </button>
+                <button
+                  type="button"
+                  class="action-btn tertiary"
+                  disabled={resultsPage <= 1}
+                  onclick={() => goToPage(resultsPage - 1)}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  class="action-btn tertiary"
+                  disabled={resultsPage >= totalPages}
+                  onclick={() => goToPage(resultsPage + 1)}
+                >
+                  Next
+                </button>
+                <button
+                  type="button"
+                  class="action-btn tertiary"
+                  disabled={resultsPage >= totalPages}
+                  onclick={() => goToPage(totalPages)}
+                >
+                  Last
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div class="results-grid">
             {#each previewGroups as group (group.id)}
-              <article class="result-card">
+              <article
+                class="result-card result-card-clickable"
+                role="button"
+                tabindex="0"
+                aria-label={`Open details for ${group.title}`}
+                onclick={() => openGroupDetails(group.id)}
+                onkeydown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openGroupDetails(group.id);
+                  }
+                }}
+              >
                 <header class="result-card-header">
-                  <div class="result-title">Group #{group.id}</div>
+                  <div class="result-title">{group.title}</div>
+                  <div class="reason-badge">{reasonKindLabel(group.reasonKind)}</div>
                   <div class="result-meta">score: {group.scoreLabel}</div>
                   <div class="result-meta">images: {group.count}</div>
                 </header>
@@ -559,7 +835,7 @@
                   {#each group.images as imagePath (imagePath)}
                     <figure class="thumb-item" title={imagePath}>
                       <img src={convertFileSrc(imagePath)} alt={imagePath} loading="lazy" />
-                      <figcaption>{imagePath.split(/[\\/]/).at(-1) ?? imagePath}</figcaption>
+                      <figcaption>{toBaseName(imagePath)}</figcaption>
                     </figure>
                   {/each}
                 </div>
@@ -635,6 +911,10 @@
               Enable rotations
             </label>
             <label><input type="checkbox" bind:checked={settingsDraft.enable_flip} /> Enable flip</label>
+            <label>
+              <input type="checkbox" bind:checked={settingsDraft.hide_single_image_groups} />
+              Hide groups with 1 image
+            </label>
 
             <label>
               Threshold
@@ -761,6 +1041,109 @@
             Cancel
           </button>
           <button type="button" class="action-btn" onclick={() => void saveSettings()}>Save</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if selectedGroup}
+    <div
+      class="overlay"
+      role="button"
+      tabindex="0"
+      aria-label="Close group details"
+      onclick={(e) => {
+        if (e.target === e.currentTarget) closeGroupDetails();
+      }}
+      onkeydown={(e) => {
+        if (e.key === "Escape" || e.key === "Enter" || e.key === " ") closeGroupDetails();
+      }}
+    >
+      <div class="modal detail-modal">
+        <div class="modal-header">
+          <h2>Group Details</h2>
+          <button
+            type="button"
+            class="modal-close-btn"
+            aria-label="Close group details"
+            onclick={() => closeGroupDetails()}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="detail-header">
+            <div class="detail-main">
+              <div class="result-title">{groupTitle(selectedGroup)}</div>
+              <div class="result-meta">id: {selectedGroup.id}</div>
+              <div class="result-meta">score: {selectedGroup.score == null ? "-" : selectedGroup.score.toFixed(3)}</div>
+              <div class="result-meta">images: {selectedGroup.images.length}</div>
+            </div>
+            <div class="reason-badge">{reasonKindLabel(selectedGroup.reason_kind)}</div>
+          </div>
+
+          <section class="detail-section">
+            <h3>Images</h3>
+            <div class="detail-grid">
+              {#each selectedGroup.images as imagePath (imagePath)}
+                <figure class="thumb-item detail-thumb-item" title={imagePath}>
+                  <img src={convertFileSrc(imagePath)} alt={imagePath} loading="lazy" />
+                  <figcaption>{toBaseName(imagePath)}</figcaption>
+                </figure>
+              {/each}
+            </div>
+          </section>
+
+          <section class="detail-section">
+            <h3>Reasons</h3>
+            {#if selectedGroup.reasons.length === 0}
+              <p class="stub">No pair reasons were provided for this group.</p>
+            {:else}
+              <ul class="reasons-list">
+                {#each selectedGroup.reasons as reason (`${reason.left}:${reason.right}:${reason.type}`)}
+                  <li class="reason-item">
+                    <div class="reason-item-header">
+                      <div class="reason-pair">{toBaseName(reason.left)} ↔ {toBaseName(reason.right)}</div>
+                      <div class="reason-type">{pairReasonTypeLabel(reason.type)}</div>
+                    </div>
+                    <div class="reason-metrics">
+                      {#if reason.composite_score != null}
+                        <span class="reason-metric">composite: {formatMetricValue(reason.composite_score)}</span>
+                      {/if}
+                      {#if reason.phash}
+                        <span class="reason-metric">
+                          pHash: score {formatMetricValue(reason.phash.score)}, raw {formatMetricValue(reason.phash.raw)}, valid {reason.phash.valid ? "yes" : "no"}
+                        </span>
+                      {/if}
+                      {#if reason.ssim}
+                        <span class="reason-metric">
+                          SSIM: score {formatMetricValue(reason.ssim.score)}, raw {formatMetricValue(reason.ssim.raw)}, valid {reason.ssim.valid ? "yes" : "no"}
+                        </span>
+                      {/if}
+                      {#if reason.histogram}
+                        <span class="reason-metric">
+                          Histogram: score {formatMetricValue(reason.histogram.score)}, raw {formatMetricValue(reason.histogram.raw)}, valid {reason.histogram.valid ? "yes" : "no"}
+                        </span>
+                      {/if}
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </section>
         </div>
       </div>
     </div>
@@ -1071,6 +1454,89 @@
     font-size: 1.02rem;
   }
 
+  .results-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-top: 0.2rem;
+  }
+
+  .toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .toolbar-label {
+    font-size: 0.76rem;
+    color: #aeb1bf;
+    font-weight: 600;
+  }
+
+  .toolbar-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.76rem;
+    color: #aeb1bf;
+  }
+
+  .toolbar-field select {
+    border: 1px solid #3f4150;
+    border-radius: 6px;
+    background: #1e1f26;
+    color: #f2f3f7;
+    padding: 0.34rem 0.45rem;
+    font-size: 0.78rem;
+  }
+
+  .reason-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .chip {
+    border: 1px solid #3f4150;
+    border-radius: 999px;
+    background: #1e1f26;
+    color: #aeb1bf;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.74rem;
+    cursor: pointer;
+  }
+
+  .chip:hover {
+    border-color: #5c7cfa;
+    color: #f2f3f7;
+  }
+
+  .chip.chip-active {
+    border-color: #5c7cfa;
+    color: #dce3ff;
+    background: rgb(92 124 250 / 15%);
+  }
+
+  .pagination-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+  }
+
+  .pagination-meta {
+    font-size: 0.75rem;
+    color: #aeb1bf;
+  }
+
+  .pagination-controls {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+  }
+
   .empty-state {
     margin-top: 0.5rem;
     border: 1px dashed #3f4150;
@@ -1095,6 +1561,20 @@
     gap: 0.5rem;
   }
 
+  .result-card-clickable {
+    cursor: pointer;
+    transition: border-color 0.14s ease;
+  }
+
+  .result-card-clickable:hover {
+    border-color: #5c7cfa;
+  }
+
+  .result-card-clickable:focus-visible {
+    outline: 2px solid #5c7cfa;
+    outline-offset: 2px;
+  }
+
   .result-card-header {
     display: flex;
     gap: 0.5rem;
@@ -1105,6 +1585,18 @@
   .result-title {
     font-weight: 600;
     color: #f0f1f6;
+  }
+
+  .reason-badge {
+    border: 1px solid #4f5f9f;
+    border-radius: 999px;
+    background: rgb(92 124 250 / 14%);
+    color: #dce3ff;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    padding: 0.13rem 0.45rem;
   }
 
   .result-meta {
@@ -1164,6 +1656,10 @@
     box-shadow: 0 8px 32px rgb(0 0 0 / 45%);
   }
 
+  .detail-modal {
+    width: min(66rem, 96vw);
+  }
+
   .modal-header {
     display: flex;
     justify-content: space-between;
@@ -1200,6 +1696,98 @@
     display: flex;
     flex-direction: column;
     gap: 0.8rem;
+  }
+
+  .detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .detail-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem 0.6rem;
+  }
+
+  .detail-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .detail-section h3 {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #d9dbea;
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.45rem;
+  }
+
+  .detail-thumb-item img {
+    height: 110px;
+  }
+
+  .reasons-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .reason-item {
+    border: 1px solid #34353f;
+    border-radius: 8px;
+    background: #1f2027;
+    padding: 0.5rem 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .reason-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .reason-pair {
+    color: #f0f1f6;
+    font-size: 0.78rem;
+    font-weight: 520;
+  }
+
+  .reason-type {
+    font-size: 0.7rem;
+    color: #aeb1bf;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .reason-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.32rem;
+  }
+
+  .reason-metric {
+    border: 1px solid #3f4150;
+    border-radius: 999px;
+    background: #1a1b21;
+    color: #c9cbd8;
+    font-size: 0.72rem;
+    padding: 0.17rem 0.48rem;
   }
 
   .settings-grid {

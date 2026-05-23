@@ -541,7 +541,8 @@ fn default_config() -> Config {
             "resize_size": 256,
             "hist_bins": 512,
             "hist_method": "correlation",
-            "alpha_threshold": 0.05
+            "alpha_threshold": 0.05,
+            "hide_single_image_groups": true
         }"#,
     )
     .expect("valid embedded default config")

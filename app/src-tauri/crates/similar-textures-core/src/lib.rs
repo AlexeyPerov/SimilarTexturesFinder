@@ -37,11 +37,52 @@ pub struct ScanGroup {
     pub id: u32,
     pub score: Option<f64>,
     pub images: Vec<String>,
+    pub reason_kind: GroupReasonKind,
+    pub reasons: Vec<GroupPairReason>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
     pub groups: Vec<ScanGroup>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupReasonKind {
+    Singleton,
+    Hash,
+    Composite,
+    Mixed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupPairReason {
+    pub left: String,
+    pub right: String,
+    #[serde(rename = "type")]
+    pub reason_type: PairReasonType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub composite_score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phash: Option<MetricEvidenceDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssim: Option<MetricEvidenceDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub histogram: Option<MetricEvidenceDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PairReasonType {
+    Hash,
+    Composite,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricEvidenceDto {
+    pub score: f64,
+    pub raw: f64,
+    pub valid: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -372,9 +413,21 @@ pub fn run_scan(
     let group_scores = group_score::group_scores(&group_indices, &vertices, &stats.score_cache);
 
     let mut groups_out = Vec::with_capacity(group_indices.len());
+    let mut hash_reason_set: std::collections::HashSet<(usize, usize)> =
+        std::collections::HashSet::new();
+    for &(a, b) in &hash_edges {
+        hash_reason_set.insert(pairwise::pair_key(a, b));
+    }
+    let mut composite_reason_set: std::collections::HashSet<(usize, usize)> =
+        std::collections::HashSet::new();
+    for &(a, b) in &stats.composite_edges {
+        composite_reason_set.insert(pairwise::pair_key(a, b));
+    }
+
     for (gi, members) in group_indices.iter().enumerate() {
         let id = (gi + 1) as u32;
         let mut images = Vec::with_capacity(members.len());
+        let mut image_by_idx: HashMap<usize, String> = HashMap::new();
         for &idx in members {
             let image = canonical_path_string(&vertices[idx].path).map_err(|error| {
                 ScanError::CanonicalizePath {
@@ -382,12 +435,80 @@ pub fn run_scan(
                     error,
                 }
             })?;
+            image_by_idx.insert(idx, image.clone());
             images.push(image);
         }
+
+        let mut reasons = Vec::new();
+        let mut has_hash_reason = false;
+        let mut has_composite_reason = false;
+        for ai in 0..members.len() {
+            for bi in (ai + 1)..members.len() {
+                let a = members[ai];
+                let b = members[bi];
+                let key = pairwise::pair_key(a, b);
+                if hash_reason_set.contains(&key) {
+                    has_hash_reason = true;
+                    let left = image_by_idx
+                        .get(&a)
+                        .cloned()
+                        .unwrap_or_else(|| vertices[a].path.to_string_lossy().to_string());
+                    let right = image_by_idx
+                        .get(&b)
+                        .cloned()
+                        .unwrap_or_else(|| vertices[b].path.to_string_lossy().to_string());
+                    reasons.push(GroupPairReason {
+                        left,
+                        right,
+                        reason_type: PairReasonType::Hash,
+                        composite_score: Some(1.0),
+                        phash: None,
+                        ssim: None,
+                        histogram: None,
+                    });
+                }
+
+                if composite_reason_set.contains(&key) {
+                    has_composite_reason = true;
+                    let left = image_by_idx
+                        .get(&a)
+                        .cloned()
+                        .unwrap_or_else(|| vertices[a].path.to_string_lossy().to_string());
+                    let right = image_by_idx
+                        .get(&b)
+                        .cloned()
+                        .unwrap_or_else(|| vertices[b].path.to_string_lossy().to_string());
+                    let reason = stats.reason_cache.get(&key);
+                    reasons.push(GroupPairReason {
+                        left,
+                        right,
+                        reason_type: PairReasonType::Composite,
+                        composite_score: reason.map(|r| r.composite_score),
+                        phash: reason.and_then(|r| r.phash.map(metric_evidence_from_pairwise)),
+                        ssim: reason.and_then(|r| r.ssim.map(metric_evidence_from_pairwise)),
+                        histogram: reason
+                            .and_then(|r| r.histogram.map(metric_evidence_from_pairwise)),
+                    });
+                }
+            }
+        }
+
+        let reason_kind = if has_hash_reason && has_composite_reason {
+            GroupReasonKind::Mixed
+        } else if has_hash_reason {
+            GroupReasonKind::Hash
+        } else if has_composite_reason {
+            GroupReasonKind::Composite
+        } else {
+            GroupReasonKind::Singleton
+        };
+
         groups_out.push(ScanGroup {
             id,
             score: group_scores[gi],
             images,
+            reason_kind,
+            reasons,
         });
     }
 
@@ -412,6 +533,20 @@ pub fn write_result_json(path: &Path, result: &ScanResult) -> std::io::Result<()
             id: g.id,
             score: g.score,
             images: g.images.clone(),
+            reason_kind: g.reason_kind.clone(),
+            reasons: g
+                .reasons
+                .iter()
+                .map(|r| output::GroupPairReasonRecord {
+                    left: r.left.clone(),
+                    right: r.right.clone(),
+                    reason_type: r.reason_type.clone(),
+                    composite_score: r.composite_score,
+                    phash: r.phash.clone().map(output::MetricEvidenceRecord::from),
+                    ssim: r.ssim.clone().map(output::MetricEvidenceRecord::from),
+                    histogram: r.histogram.clone().map(output::MetricEvidenceRecord::from),
+                })
+                .collect(),
         })
         .collect();
     let doc = output::ResultJson { groups };
@@ -449,6 +584,14 @@ fn canonical_path_string(p: &Path) -> Result<String, std::io::Error> {
     Ok(c.to_string_lossy().to_string())
 }
 
+fn metric_evidence_from_pairwise(metric: pairwise::MetricEvidence) -> MetricEvidenceDto {
+    MetricEvidenceDto {
+        score: metric.score,
+        raw: metric.raw,
+        valid: metric.valid,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -464,7 +607,8 @@ mod tests {
             "enable_rotations": false,
             "enable_flip": false,
             "threshold": 0.85,
-            "weights": { "phash": 0.35, "ssim": 0.45, "histogram": 0.2 }
+            "weights": { "phash": 0.35, "ssim": 0.45, "histogram": 0.2 },
+            "hide_single_image_groups": true
         }"#;
         serde_json::from_str(json).expect("valid cfg")
     }
@@ -506,6 +650,16 @@ mod tests {
                 id: 1,
                 score: Some(1.0),
                 images: vec!["/tmp/a.png".to_string(), "/tmp/b.png".to_string()],
+                reason_kind: GroupReasonKind::Hash,
+                reasons: vec![GroupPairReason {
+                    left: "/tmp/a.png".to_string(),
+                    right: "/tmp/b.png".to_string(),
+                    reason_type: PairReasonType::Hash,
+                    composite_score: Some(1.0),
+                    phash: None,
+                    ssim: None,
+                    histogram: None,
+                }],
             }],
         };
         let dir = tempdir().expect("tempdir");
