@@ -1,12 +1,16 @@
 # Similar Textures Finder
 
-Single desktop application built with **Tauri 2 + Svelte 5 + Rust core**.
+Desktop app for finding duplicate and near-duplicate texture images in a folder. Point it at a library, run a scan, and browse grouped results with thumbnails, scores, and match reasons so you can review or clean up redundant assets.
 
-## Repository layout
+Each image is checked in two stages:
 
-- `app/` — application workspace (Svelte UI, Tauri host, Rust core)
-- `specs/` — plans, checklists, and validation artifacts
-- `test-images/` — optional test fixture images
+- **File hash** — compares raw file bytes (SHA-256 by default) to catch exact duplicates, even when filenames differ.
+- **Visual similarity** — for files that are not byte-identical, a composite score combines three metrics (weights are configurable in Settings):
+  - **pHash (perceptual hash)** — a compact fingerprint of overall appearance; good at spotting near-duplicates and re-exports quickly.
+  - **SSIM (structural similarity)** — compares luminance and structure after resize; catches images that look alike but may differ in compression or minor edits.
+  - **Histogram** — compares color distribution across channels; helps group textures with similar palettes even when layout differs.
+
+Optional preprocessing (alpha crop, rotation, and flip checks) can be enabled for textures with transparency or orientation variants.
 
 ## Requirements
 
