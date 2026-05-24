@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use similar_textures_core::config::Config;
 use similar_textures_core::{
-    image_loader::ImageData, output::read_result_json, run_scan, write_result_json, ScanCallbacks,
-    ScanEvent, ScanOutcome, ScanRequest, ScanResult, ScanStatus,
+    image_loader::ImageData, output::read_result_json, run_scan, write_result_csv, write_result_json,
+    ScanCallbacks, ScanEvent, ScanOutcome, ScanRequest, ScanResult, ScanStatus,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -625,6 +625,37 @@ fn export_last_result_json(
     })
 }
 
+#[tauri::command]
+fn export_last_result_csv(
+    slots: State<AppSlots>,
+    request: ExportRequest,
+) -> Result<ExportResponse, String> {
+    let path = request
+        .target_path
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| "target_path is required".to_string())?;
+    let output_path = PathBuf::from(path);
+
+    if let Some(parent) = output_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+    }
+
+    let result = slots
+        .last_result
+        .lock()
+        .map_err(|_| "lock poisoned")?
+        .clone()
+        .ok_or_else(|| "no scan result in memory".to_string())?;
+
+    write_result_csv(Path::new(&output_path), &result).map_err(|e| e.to_string())?;
+    Ok(ExportResponse {
+        path: output_path.to_string_lossy().to_string(),
+    })
+}
+
 fn preview_cache_key(source: &Path, max_px: u32) -> String {
     let mut hasher = DefaultHasher::new();
     source.to_string_lossy().hash(&mut hasher);
@@ -754,6 +785,7 @@ pub fn run() {
             start_scan,
             cancel_scan,
             export_last_result_json,
+            export_last_result_csv,
             get_image_preview,
             load_result_json,
         ])
@@ -856,6 +888,26 @@ mod tests {
         let loaded = similar_textures_core::output::read_result_json(&json_path).expect("read");
         assert_eq!(loaded.groups.len(), 1);
         assert_eq!(loaded.groups[0].id, 1);
+    }
+
+    #[test]
+    fn export_csv_contains_expected_columns() {
+        let dir = tempdir().expect("tempdir");
+        let csv_path = dir.path().join("result.csv");
+        let sample = similar_textures_core::ScanResult {
+            groups: vec![similar_textures_core::ScanGroup {
+                id: 3,
+                score: Some(0.75),
+                images: vec!["/tmp/a.png".to_string(), "/tmp/b.png".to_string()],
+                reason_kind: similar_textures_core::GroupReasonKind::Composite,
+                reasons: vec![],
+            }],
+        };
+        similar_textures_core::write_result_csv(&csv_path, &sample).expect("write csv");
+        let text = std::fs::read_to_string(&csv_path).expect("read csv");
+        assert!(text.starts_with("group_id,group_name,score,reason_kind,image_path\n"));
+        assert!(text.contains("3,Group #3,0.75,composite,/tmp/a.png"));
+        assert!(text.contains("/tmp/b.png"));
     }
 
     #[test]

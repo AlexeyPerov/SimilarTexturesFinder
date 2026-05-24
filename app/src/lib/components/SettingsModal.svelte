@@ -3,6 +3,7 @@
   import { applySettingsPreset, type SettingsPresetId } from "$lib/settingsPresets";
   import { settingsHelp } from "$lib/settingsHelp";
   import { settingsEqual } from "$lib/settingsUtils";
+  import { trapFocus } from "$lib/modalFocus";
 
   type Props = {
     settingsDraft: AppSettings;
@@ -42,11 +43,14 @@
   onclick={(e) => {
     if (e.target === e.currentTarget) requestClose();
   }}
-  onkeydown={(e) => {
-    if (e.key === "Escape") requestClose();
-  }}
 >
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <div
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="settings-title"
+    use:trapFocus
+  >
     <div class="modal-header">
       <h2 id="settings-title">Settings</h2>
       <button type="button" class="modal-close-btn" aria-label="Close settings" onclick={() => requestClose()}>

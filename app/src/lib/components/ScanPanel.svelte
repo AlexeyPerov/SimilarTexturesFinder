@@ -106,6 +106,12 @@
         disabled={running}
         bind:value={inputDir}
         oninput={() => onInputDirChange?.()}
+        onkeydown={(e) => {
+          if (e.key === "Enter" && !running) {
+            e.preventDefault();
+            onStartScan();
+          }
+        }}
       />
       <button
         type="button"

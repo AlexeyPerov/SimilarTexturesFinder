@@ -553,6 +553,10 @@ pub fn write_result_json(path: &Path, result: &ScanResult) -> std::io::Result<()
     output::write_result_json(path, &doc)
 }
 
+pub fn write_result_csv(path: &Path, result: &ScanResult) -> std::io::Result<()> {
+    output::write_result_csv(path, result)
+}
+
 fn build_hash_groups(vertices: &[Vertex]) -> (Vec<(usize, usize)>, Vec<usize>) {
     let mut groups: HashMap<Vec<u8>, Vec<usize>> = HashMap::new();
     for (i, v) in vertices.iter().enumerate() {

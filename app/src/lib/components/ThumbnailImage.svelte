@@ -6,9 +6,16 @@
     alt?: string;
     maxPx?: number;
     class?: string;
+    onOpenImage?: (path: string) => void;
   };
 
-  let { imagePath, alt = imagePath, maxPx = 256, class: className = "" }: Props = $props();
+  let {
+    imagePath,
+    alt = imagePath,
+    maxPx = 256,
+    class: className = "",
+    onOpenImage,
+  }: Props = $props();
 
   let src = $state("");
   let failed = $state(false);
@@ -34,7 +41,20 @@
   });
 </script>
 
-<img class={className} {src} {alt} loading="lazy" class:fallback={failed} />
+<img
+  class={className}
+  {src}
+  {alt}
+  loading="lazy"
+  class:fallback={failed}
+  class:openable={onOpenImage != null}
+  ondblclick={(e) => {
+    if (!onOpenImage) return;
+    e.stopPropagation();
+    e.preventDefault();
+    onOpenImage(imagePath);
+  }}
+/>
 
 <style>
   img {
@@ -46,5 +66,9 @@
 
   img.fallback {
     opacity: 0.85;
+  }
+
+  img.openable {
+    cursor: pointer;
   }
 </style>

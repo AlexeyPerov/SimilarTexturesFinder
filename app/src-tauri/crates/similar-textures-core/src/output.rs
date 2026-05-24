@@ -104,3 +104,50 @@ pub fn read_result_json(path: &Path) -> Result<ScanResult, String> {
         .map_err(|e| format!("could not read result file {}: {e}", path.display()))?;
     serde_json::from_str(&text).map_err(|e| format!("result file is invalid JSON: {e}"))
 }
+
+fn csv_cell(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+fn reason_kind_csv(kind: &GroupReasonKind) -> &'static str {
+    match kind {
+        GroupReasonKind::Singleton => "singleton",
+        GroupReasonKind::Hash => "hash",
+        GroupReasonKind::Composite => "composite",
+        GroupReasonKind::Mixed => "mixed",
+    }
+}
+
+/// Write a flat CSV duplicate report (one row per image).
+pub fn write_result_csv(path: &Path, result: &ScanResult) -> std::io::Result<()> {
+    let mut buf = String::from("group_id,group_name,score,reason_kind,image_path\n");
+    for group in &result.groups {
+        let group_name = format!("Group #{}", group.id);
+        let score = group
+            .score
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| String::new());
+        let reason = reason_kind_csv(&group.reason_kind);
+        for image in &group.images {
+            buf.push_str(&format!(
+                "{},{},{},{},{}\n",
+                group.id,
+                csv_cell(&group_name),
+                csv_cell(&score),
+                csv_cell(reason),
+                csv_cell(image),
+            ));
+        }
+    }
+
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    std::fs::write(path, buf.as_bytes())
+}

@@ -25,12 +25,14 @@
     previewGroups: GroupPreview[];
     onDismissBanner?: () => void;
     onExport: () => void;
+    onExportCsv: () => void;
     onImport: () => void;
     onScanAgain: () => void;
     onToggleHideSingletons: (next: boolean) => void;
     onToggleReasonFilter: (kind: GroupReasonKind) => void;
     onGoToPage: (page: number) => void;
     onOpenGroup: (groupId: number) => void;
+    onOpenImage?: (path: string) => void;
   };
 
   let {
@@ -53,12 +55,14 @@
     previewGroups,
     onDismissBanner,
     onExport,
+    onExportCsv,
     onImport,
     onScanAgain,
     onToggleHideSingletons,
     onToggleReasonFilter,
     onGoToPage,
     onOpenGroup,
+    onOpenImage,
   }: Props = $props();
 
   function hasReasonFilter(kind: GroupReasonKind) {
@@ -92,6 +96,7 @@
     <div class="header-actions">
       <button type="button" class="action-btn secondary" onclick={() => onImport()}>Import JSON</button>
       <button type="button" class="action-btn" disabled={!hasResult} onclick={() => onExport()}>Export JSON</button>
+      <button type="button" class="action-btn" disabled={!hasResult} onclick={() => onExportCsv()}>Export CSV</button>
       <button type="button" class="action-btn" disabled={!canScanAgain || running} onclick={() => onScanAgain()}>
         Scan again
       </button>
@@ -189,7 +194,13 @@
               <div class="thumb-grid">
                 {#each group.images as imagePath (imagePath)}
                   <figure class="thumb-item" title={imagePath}>
-                    <ThumbnailImage imagePath={imagePath} maxPx={previewMaxPx} alt={imagePath} class="grid-thumb" />
+                    <ThumbnailImage
+                      imagePath={imagePath}
+                      maxPx={previewMaxPx}
+                      alt={imagePath}
+                      class="grid-thumb"
+                      {onOpenImage}
+                    />
                     <figcaption>{toBaseName(imagePath)}</figcaption>
                   </figure>
                 {/each}

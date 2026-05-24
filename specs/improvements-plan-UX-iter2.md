@@ -553,7 +553,7 @@ Replace dense single-line metrics with:
 
 **Verification:**
 
-- [ ] Shortcuts work on macOS; document Windows equivalents.
+- [x] Shortcuts work on macOS; document Windows equivalents.
 
 ### UX-5.2 Open image on double-click
 
@@ -565,7 +565,7 @@ Double-click thumbnail → open file in default viewer (`openPath`).
 
 **Verification:**
 
-- [ ] Image opens in system viewer.
+- [x] Image opens in system viewer.
 
 ### UX-5.3 Modal focus trap & backdrop fix
 
@@ -578,8 +578,8 @@ Double-click thumbnail → open file in default viewer (`openPath`).
 
 **Verification:**
 
-- [ ] Tab cycles within modal only.
-- [ ] Screen reader announces dialog title.
+- [x] Tab cycles within modal only.
+- [x] Screen reader announces dialog title.
 
 ### UX-5.4 Window title / document subtitle
 
@@ -593,7 +593,7 @@ Use Tauri window API if needed.
 
 **Verification:**
 
-- [ ] Title updates during scan and after results load.
+- [x] Title updates during scan and after results load.
 
 ---
 
@@ -611,7 +611,7 @@ Button next to Export JSON.
 
 **Verification:**
 
-- [ ] CSV opens in spreadsheet app with expected rows.
+- [x] CSV opens in spreadsheet app with expected rows.
 
 ---
 
@@ -692,11 +692,11 @@ Mark status: `[ ]` not started · `[~]` in progress · `[x]` done
 | UX-3.6 | ORB settings (blocked on core) | [x] | core ORB | |
 | UX-4.1 | Reason legend | [x] | — | |
 | UX-4.2 | Softer metric copy | [x] | — | |
-| UX-5.1 | Keyboard shortcuts | [ ] | — | |
-| UX-5.2 | Double-click open image | [ ] | UX-2.5 | |
-| UX-5.3 | Modal a11y | [ ] | — | |
-| UX-5.4 | Window title subtitle | [ ] | UX-1.1, UX-2.9 | |
-| UX-6.1 | Export CSV | [ ] | — | |
+| UX-5.1 | Keyboard shortcuts | [x] | — | |
+| UX-5.2 | Double-click open image | [x] | UX-2.5 | |
+| UX-5.3 | Modal a11y | [x] | — | |
+| UX-5.4 | Window title subtitle | [x] | UX-1.1, UX-2.9 | |
+| UX-6.1 | Export CSV | [x] | — | |
 
 ---
 

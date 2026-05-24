@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "dev.similartextures.app",
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1440",
-    "beforeBuildCommand": "",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
   "app": {

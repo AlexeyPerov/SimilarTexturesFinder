@@ -8,6 +8,7 @@
     toBaseName,
   } from "$lib/groupUtils";
   import type { ScanGroup } from "$lib/types";
+  import { trapFocus } from "$lib/modalFocus";
 
   type Props = {
     group: ScanGroup;
@@ -16,6 +17,7 @@
     onCopyPath: (path: string) => void;
     onCopyAllPaths: (paths: string[]) => void;
     onRevealPath: (path: string) => void;
+    onOpenImage?: (path: string) => void;
   };
 
   let {
@@ -25,6 +27,7 @@
     onCopyPath,
     onCopyAllPaths,
     onRevealPath,
+    onOpenImage,
   }: Props = $props();
 
   function similarityPercent(score: number | null | undefined): number | null {
@@ -39,11 +42,14 @@
   onclick={(e) => {
     if (e.target === e.currentTarget) onClose();
   }}
-  onkeydown={(e) => {
-    if (e.key === "Escape") onClose();
-  }}
 >
-  <div class="modal detail-modal" role="dialog" aria-modal="true" aria-labelledby="group-detail-title">
+  <div
+    class="modal detail-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="group-detail-title"
+    use:trapFocus
+  >
     <div class="modal-header">
       <h2 id="group-detail-title">Group Details</h2>
       <div class="header-actions">
@@ -76,7 +82,13 @@
           {#each group.images as imagePath (imagePath)}
             <div class="detail-thumb-wrap">
               <figure class="thumb-item detail-thumb-item" title={imagePath}>
-                <ThumbnailImage imagePath={imagePath} maxPx={previewMaxPx} alt={imagePath} class="detail-img" />
+                <ThumbnailImage
+                  imagePath={imagePath}
+                  maxPx={previewMaxPx}
+                  alt={imagePath}
+                  class="detail-img"
+                  {onOpenImage}
+                />
                 <figcaption>{toBaseName(imagePath)}</figcaption>
               </figure>
               <div class="thumb-actions">
@@ -104,7 +116,13 @@
 
                 <div class="pair-compare">
                   <figure class="pair-thumb">
-                    <ThumbnailImage imagePath={reason.left} maxPx={previewMaxPx} alt={reason.left} class="pair-img" />
+                    <ThumbnailImage
+                      imagePath={reason.left}
+                      maxPx={previewMaxPx}
+                      alt={reason.left}
+                      class="pair-img"
+                      {onOpenImage}
+                    />
                     <figcaption>{toBaseName(reason.left)}</figcaption>
                   </figure>
                   <div class="pair-score">
@@ -119,7 +137,13 @@
                     {/if}
                   </div>
                   <figure class="pair-thumb">
-                    <ThumbnailImage imagePath={reason.right} maxPx={previewMaxPx} alt={reason.right} class="pair-img" />
+                    <ThumbnailImage
+                      imagePath={reason.right}
+                      maxPx={previewMaxPx}
+                      alt={reason.right}
+                      class="pair-img"
+                      {onOpenImage}
+                    />
                     <figcaption>{toBaseName(reason.right)}</figcaption>
                   </figure>
                 </div>

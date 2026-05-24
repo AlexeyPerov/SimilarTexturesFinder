@@ -3,8 +3,9 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { open, save } from "@tauri-apps/plugin-dialog";
-  import { revealItemInDir } from "@tauri-apps/plugin-opener";
+  import { revealItemInDir, openPath } from "@tauri-apps/plugin-opener";
   import { segmentConsoleLines } from "$lib/logSegments";
+  import { buildWindowTitle } from "$lib/windowTitle";
   import GroupDetailModal from "$lib/components/GroupDetailModal.svelte";
   import ResultsPanel from "$lib/components/ResultsPanel.svelte";
   import ScanPanel from "$lib/components/ScanPanel.svelte";
@@ -191,6 +192,14 @@
     }
   }
 
+  async function openImagePath(path: string) {
+    try {
+      await openPath(path);
+    } catch (e) {
+      showTabBanner("results", "error", `Could not open image: ${String(e)}`);
+    }
+  }
+
   async function chooseInputDirectory() {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
@@ -261,6 +270,13 @@
     resetMessages();
     settingsDraft = cloneSettings(settings);
     showSettings = false;
+  }
+
+  function requestCloseSettings() {
+    if (!settingsEqual(settings, settingsDraft)) {
+      if (!confirm("Discard unsaved settings changes?")) return;
+    }
+    cancelSettings();
   }
 
   async function saveSettings() {
@@ -369,6 +385,25 @@
         request: { targetPath: target },
       });
       showTabBanner("results", "success", `Exported JSON to ${out.path}`);
+    } catch (e) {
+      showTabBanner("results", "error", `Export failed: ${String(e)}`);
+    }
+  }
+
+  async function exportCsv() {
+    if (!result) return;
+    resultsBanner = null;
+    const target = await save({
+      title: "Export result CSV",
+      defaultPath: "result.csv",
+      filters: [{ name: "CSV", extensions: ["csv"] }],
+    });
+    if (!target || Array.isArray(target)) return;
+    try {
+      const out = await invoke<ExportResponse>("export_last_result_csv", {
+        request: { targetPath: target },
+      });
+      showTabBanner("results", "success", `Exported CSV to ${out.path}`);
     } catch (e) {
       showTabBanner("results", "error", `Export failed: ${String(e)}`);
     }
@@ -490,6 +525,41 @@
     if (!running) stopElapsedTimer();
   });
 
+  $effect(() => {
+    const title = buildWindowTitle({
+      running,
+      statusState,
+      resultGroupCount: totalResultGroupCount,
+    });
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().setTitle(title);
+      } catch {
+        // Not running inside Tauri (e.g. vite dev in browser).
+      }
+    })();
+  });
+
+  function handleGlobalKeyDown(e: KeyboardEvent) {
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key === ",") {
+      e.preventDefault();
+      openSettings();
+      return;
+    }
+    if (e.key !== "Escape") return;
+    if (selectedGroupId != null) {
+      e.preventDefault();
+      closeGroupDetails();
+      return;
+    }
+    if (showSettings) {
+      e.preventDefault();
+      requestCloseSettings();
+    }
+  }
+
   onMount(() => {
     let unlistenLog: UnlistenFn | undefined;
     let unlistenProgress: UnlistenFn | undefined;
@@ -499,6 +569,8 @@
     void loadUiState();
     void refreshStatus();
     void refreshResult();
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
 
     void listen<ScanLogPayload>("scan-log", (evt) => {
       const p = evt.payload;
@@ -537,6 +609,7 @@
     }).then((fn) => (unlistenFinished = fn));
 
     return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
       unlistenLog?.();
       unlistenProgress?.();
       unlistenFinished?.();
@@ -640,12 +713,14 @@
         {previewGroups}
         onDismissBanner={() => (resultsBanner = null)}
         onExport={() => void exportJson()}
+        onExportCsv={() => void exportCsv()}
         onImport={() => void importJson()}
         onScanAgain={() => void startScan()}
         onToggleHideSingletons={(next) => void toggleHideSingletons(next)}
         onToggleReasonFilter={toggleReasonFilter}
         onGoToPage={goToPage}
         onOpenGroup={openGroupDetails}
+        onOpenImage={(path) => void openImagePath(path)}
       />
     {/if}
   </div>
@@ -670,6 +745,7 @@
       onCopyPath={(path) => void copyPath(path)}
       onCopyAllPaths={(paths) => void copyAllPaths(paths)}
       onRevealPath={(path) => void revealPath(path)}
+      onOpenImage={(path) => void openImagePath(path)}
     />
   {/if}
 </div>
