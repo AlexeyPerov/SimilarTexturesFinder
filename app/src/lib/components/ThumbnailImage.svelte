@@ -19,49 +19,105 @@
 
   let src = $state("");
   let failed = $state(false);
-
-  async function loadPreview() {
-    failed = false;
-    src = "";
-    try {
-      const out = await invoke<{ path: string }>("get_image_preview", {
-        request: { path: imagePath, maxPx },
-      });
-      src = convertFileSrc(out.path);
-    } catch {
-      failed = true;
-      src = convertFileSrc(imagePath);
-    }
-  }
+  let loading = $state(true);
 
   $effect(() => {
-    imagePath;
-    maxPx;
-    void loadPreview();
+    const path = imagePath;
+    const px = maxPx;
+    let active = true;
+
+    loading = true;
+    failed = false;
+    src = "";
+
+    void (async () => {
+      try {
+        const out = await invoke<{ path: string }>("get_image_preview", {
+          request: { path, maxPx: px },
+        });
+        if (!active) return;
+        src = convertFileSrc(out.path);
+      } catch {
+        if (!active) return;
+        failed = true;
+        src = convertFileSrc(path);
+      } finally {
+        if (active) loading = false;
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
   });
 </script>
 
-<img
-  class={className}
-  {src}
-  {alt}
-  loading="lazy"
-  class:fallback={failed}
-  class:openable={onOpenImage != null}
-  ondblclick={(e) => {
-    if (!onOpenImage) return;
-    e.stopPropagation();
-    e.preventDefault();
-    onOpenImage(imagePath);
-  }}
-/>
+<div class="thumb-shell" class:loading>
+  {#if loading}
+    <div class="thumb-placeholder" aria-hidden="true">
+      <div class="thumb-spinner"></div>
+    </div>
+  {/if}
+  <img
+    class={className}
+    {src}
+    {alt}
+    loading="lazy"
+    class:fallback={failed}
+    class:openable={onOpenImage != null}
+    class:loaded={!loading && src !== ""}
+    ondblclick={(e) => {
+      if (!onOpenImage) return;
+      e.stopPropagation();
+      e.preventDefault();
+      onOpenImage(imagePath);
+    }}
+  />
+</div>
 
 <style>
+  .thumb-shell {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+
+  .thumb-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #101116;
+    z-index: 1;
+  }
+
+  .thumb-spinner {
+    width: 1.1rem;
+    height: 1.1rem;
+    border: 2px solid #3f4150;
+    border-top-color: #5c7cfa;
+    border-radius: 50%;
+    animation: thumb-spin 0.7s linear infinite;
+  }
+
+  @keyframes thumb-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   img {
     display: block;
     width: 100%;
     object-fit: cover;
     background: #101116;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  img.loaded {
+    opacity: 1;
   }
 
   img.fallback {

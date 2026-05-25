@@ -27,3 +27,19 @@ export const reasonLegendEntries = [
   { kind: "composite", label: "Composite", description: "Visually similar by combined metrics." },
   { kind: "mixed", label: "Mixed", description: "Multiple match types in one group." },
 ] as const;
+
+export const metricDetailsHelp = {
+  metric_details:
+    "Technical breakdown of how this image pair was scored by each similarity metric.",
+  composite:
+    "Weighted blend of enabled metrics that passed their checks. Range 0–1; higher means more similar.",
+  phash: "Perceptual hash — fast visual fingerprint of overall image structure.",
+  ssim: "Structural similarity — compares luminance patterns after both images are resized.",
+  histogram: "Color histogram comparison — measures how alike the color distributions are.",
+  score: "Normalized similarity used for matching, on a 0–1 scale (higher = more similar).",
+  phash_raw: "Hamming distance between 64-bit hashes (0 = identical; lower is more similar).",
+  ssim_raw: "Raw SSIM value from the luminance comparison (0–1 scale).",
+  histogram_raw: "Raw histogram comparison value (correlation or Bhattacharyya coefficient).",
+  valid:
+    "Whether this metric met its threshold and was included in the composite score.",
+} as const;

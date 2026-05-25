@@ -88,6 +88,9 @@ pub fn pairwise_compare(
                             let hi = cfg
                                 .enable_histogram
                                 .then(|| max_hist(fa, fb, hist_method));
+                            if ss.is_some_and(ssim_vetoes_pair) {
+                                return Some((i, j, None, ph, ss, hi));
+                            }
                             let fs_out = combine(cfg, ph, ss, hi);
                             Some((i, j, fs_out, ph, ss, hi))
                         } else {
@@ -176,11 +179,11 @@ fn max_ssim(
     };
     for tb in &fb.transforms {
         let r = ssim::score_luma(la, &tb.ssim_luma, min_ssim);
-        if r.valid && r.score > best.score {
+        if r.score > best.score {
             best = r;
         }
     }
-    if !best.valid {
+    if best.score < 0.0 {
         MetricResult {
             score: 0.0,
             raw: 0.0,
@@ -188,6 +191,47 @@ fn max_ssim(
         }
     } else {
         best
+    }
+}
+
+/// When SSIM is enabled and structurally below threshold, reject the pair outright.
+fn ssim_vetoes_pair(ss: MetricResult) -> bool {
+    !ss.valid && ss.score.is_finite() && ss.score > 0.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::similarity::types::MetricResult;
+
+    #[test]
+    fn ssim_veto_rejects_below_threshold() {
+        let ss = MetricResult {
+            score: 0.4,
+            raw: 0.4,
+            valid: false,
+        };
+        assert!(ssim_vetoes_pair(ss));
+    }
+
+    #[test]
+    fn ssim_veto_allows_above_threshold() {
+        let ss = MetricResult {
+            score: 0.95,
+            raw: 0.95,
+            valid: true,
+        };
+        assert!(!ssim_vetoes_pair(ss));
+    }
+
+    #[test]
+    fn ssim_veto_skips_degenerate_zero() {
+        let ss = MetricResult {
+            score: 0.0,
+            raw: 0.0,
+            valid: false,
+        };
+        assert!(!ssim_vetoes_pair(ss));
     }
 }
 

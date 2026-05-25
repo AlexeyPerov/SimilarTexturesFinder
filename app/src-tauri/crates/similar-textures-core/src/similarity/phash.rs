@@ -1,6 +1,7 @@
 use rustdct::DctPlanner;
 
 use crate::image_loader::ImageData;
+use crate::similarity::prepare::luma_at_pixel;
 use crate::similarity::types::{MetricResult, SimilarityMetric};
 
 const PHASH_SIZE: u32 = 32;
@@ -114,7 +115,8 @@ fn luma_at(rgba: &[u8], width: u32, x: u32, y: u32) -> f32 {
     let r = rgba[i] as f32;
     let g = rgba[i + 1] as f32;
     let b = rgba[i + 2] as f32;
-    0.299 * r + 0.587 * g + 0.114 * b
+    let a = rgba[i + 3] as f32;
+    luma_at_pixel(r, g, b, a)
 }
 
 fn dct_2d_32(input: &[f32]) -> Vec<f32> {
@@ -167,5 +169,58 @@ mod tests {
         let r = m.compute(&data, &data);
         assert!(r.valid);
         assert!((r.score - 1.0).abs() < 1e-4, "score={}", r.score);
+    }
+
+    #[test]
+    fn alpha_weighted_luma_distinguishes_glow_shapes() {
+        let vertical = glow_png(50, 50, GlowShape::Vertical);
+        let radial = glow_png(50, 50, GlowShape::Radial);
+        let a = ImageData::from_rgba_image(vertical);
+        let b = ImageData::from_rgba_image(radial);
+        let ha = compute_hash(&a);
+        let hb = compute_hash(&b);
+        assert_ne!(ha, hb, "hashes must differ for different glow shapes");
+        let dist = (ha ^ hb).count_ones();
+        assert!(
+            dist > 0,
+            "expected non-zero Hamming distance, got {dist}"
+        );
+    }
+
+    enum GlowShape {
+        Vertical,
+        Radial,
+    }
+
+    /// VFX-style PNG: white RGB with alpha=0 outside the glow (common export artifact).
+    fn glow_png(w: u32, h: u32, shape: GlowShape) -> RgbaImage {
+        let mut img = RgbaImage::new(w, h);
+        for p in img.pixels_mut() {
+            *p = Rgba([255, 255, 255, 0]);
+        }
+        let cx = w as f32 / 2.0;
+        let cy = h as f32 / 2.0;
+        for y in 0..h {
+            for x in 0..w {
+                let dx = x as f32 - cx;
+                let dy = y as f32 - cy;
+                let alpha = match shape {
+                    GlowShape::Vertical => {
+                        let nx = dx / (w as f32 * 0.12);
+                        let ny = dy / (h as f32 * 0.45);
+                        ((1.0 - nx * nx).max(0.0) * (1.0 - ny * ny).max(0.0)).sqrt()
+                    }
+                    GlowShape::Radial => {
+                        let r = (dx * dx + dy * dy).sqrt() / (w as f32 * 0.22);
+                        (1.0 - r).max(0.0)
+                    }
+                };
+                if alpha > 0.01 {
+                    let a = (alpha * 255.0).round().clamp(0.0, 255.0) as u8;
+                    img.put_pixel(x, y, Rgba([255, 255, 255, a]));
+                }
+            }
+        }
+        img
     }
 }

@@ -696,6 +696,82 @@ mod tests {
         assert_eq!(outcome.status, ScanStatus::Cancelled);
     }
 
+    #[test]
+    fn distinct_transparent_glow_textures_not_grouped() {
+        let dir = tempdir().expect("tempdir");
+        let input_dir = dir.path().join("input");
+        fs::create_dir_all(&input_dir).expect("mkdir");
+
+        let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../../test-images");
+        let longtail_src = fixture_dir.join("longtail.png");
+        let sparkl_src = fixture_dir.join("reward_sparkl.png");
+
+        let longtail = input_dir.join("longtail.png");
+        let sparkl = input_dir.join("reward_sparkl.png");
+
+        if longtail_src.is_file() && sparkl_src.is_file() {
+            fs::copy(&longtail_src, &longtail).expect("copy longtail");
+            fs::copy(&sparkl_src, &sparkl).expect("copy sparkl");
+        } else {
+            write_glow_fixture(&longtail, GlowFixture::Vertical);
+            write_glow_fixture(&sparkl, GlowFixture::Radial);
+        }
+
+        let cfg = default_cfg();
+        let req = ScanRequest {
+            input: input_dir,
+            threads: 2,
+        };
+        let outcome = run_scan(&cfg, &req, &NoopCallbacks).expect("scan");
+        assert_eq!(outcome.status, ScanStatus::Completed);
+        assert_eq!(outcome.metrics.scanned_paths, 2);
+        assert_eq!(
+            outcome.metrics.composite_edges, 0,
+            "longtail and reward_sparkl must not be marked similar"
+        );
+        assert!(
+            outcome.result.groups.iter().all(|g| g.images.len() == 1),
+            "each texture should remain in its own group"
+        );
+    }
+
+    enum GlowFixture {
+        Vertical,
+        Radial,
+    }
+
+    fn write_glow_fixture(path: &std::path::Path, shape: GlowFixture) {
+        let mut img = image::RgbaImage::new(50, 50);
+        for p in img.pixels_mut() {
+            *p = image::Rgba([255, 255, 255, 0]);
+        }
+        let cx = 25.0_f32;
+        let cy = 25.0_f32;
+        for y in 0..50 {
+            for x in 0..50 {
+                let dx = x as f32 - cx;
+                let dy = y as f32 - cy;
+                let alpha = match shape {
+                    GlowFixture::Vertical => {
+                        let nx = dx / 6.0;
+                        let ny = dy / 22.0;
+                        ((1.0 - nx * nx).max(0.0) * (1.0 - ny * ny).max(0.0)).sqrt()
+                    }
+                    GlowFixture::Radial => {
+                        let r = (dx * dx + dy * dy).sqrt() / 11.0;
+                        (1.0 - r).max(0.0)
+                    }
+                };
+                if alpha > 0.01 {
+                    let a = (alpha * 255.0).round().clamp(0.0, 255.0) as u8;
+                    img.put_pixel(x, y, image::Rgba([255, 255, 255, a]));
+                }
+            }
+        }
+        img.save(path).expect("write glow fixture");
+    }
+
     fn tiny_png_rgba(w: u32, h: u32, rgba: [u8; 4]) -> Vec<u8> {
         let mut img = image::RgbaImage::new(w, h);
         for p in img.pixels_mut() {

@@ -675,7 +675,10 @@ fn preview_cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-fn get_image_preview(app: AppHandle, request: ImagePreviewRequest) -> Result<ImagePreviewResponse, String> {
+async fn get_image_preview(
+    app: AppHandle,
+    request: ImagePreviewRequest,
+) -> Result<ImagePreviewResponse, String> {
     let source = PathBuf::from(request.path.trim());
     if !source.is_file() {
         return Err(format!("image not found: {}", source.display()));
@@ -684,7 +687,16 @@ fn get_image_preview(app: AppHandle, request: ImagePreviewRequest) -> Result<Ima
     let cache_dir = preview_cache_dir(&app)?;
     let cache_path = cache_dir.join(format!("{}.jpg", preview_cache_key(&source, max_px)));
     if !cache_path.exists() {
-        ImageData::write_preview_jpeg(&source, &cache_path, max_px)?;
+        let source_for_preview = source.clone();
+        let cache_path_for_preview = cache_path.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            if cache_path_for_preview.exists() {
+                return Ok(());
+            }
+            ImageData::write_preview_jpeg(&source_for_preview, &cache_path_for_preview, max_px)
+        })
+        .await
+        .map_err(|e| format!("preview task failed: {e}"))??;
     }
     Ok(ImagePreviewResponse {
         path: cache_path.to_string_lossy().to_string(),

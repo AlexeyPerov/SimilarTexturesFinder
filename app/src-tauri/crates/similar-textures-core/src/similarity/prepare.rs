@@ -19,6 +19,12 @@ pub fn resize_square_rgba(img: &ImageData, size: u32) -> ImageData {
     ImageData::from_rgba_image(scaled)
 }
 
+/// ITU-R BT.601 luma weighted by normalized alpha (transparent pixels contribute black).
+pub fn luma_at_pixel(r: f32, g: f32, b: f32, a: f32) -> f32 {
+    let l = 0.299 * r + 0.587 * g + 0.114 * b;
+    l * (a / 255.0)
+}
+
 /// Luma (ITU-R BT.601) per pixel, row-major.
 pub fn luma_plane(img: &ImageData) -> Vec<f32> {
     let w = img.width as usize;
@@ -32,7 +38,8 @@ pub fn luma_plane(img: &ImageData) -> Vec<f32> {
             let r = rgba[i] as f32;
             let g = rgba[i + 1] as f32;
             let b = rgba[i + 2] as f32;
-            out.push(0.299 * r + 0.587 * g + 0.114 * b);
+            let a = rgba[i + 3] as f32;
+            out.push(luma_at_pixel(r, g, b, a));
         }
     }
     out

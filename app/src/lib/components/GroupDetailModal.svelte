@@ -8,10 +8,11 @@
     toBaseName,
   } from "$lib/groupUtils";
   import type { ScanGroup } from "$lib/types";
+  import { metricDetailsHelp } from "$lib/settingsHelp";
   import { trapFocus } from "$lib/modalFocus";
 
   type Props = {
-    group: ScanGroup;
+    group: ScanGroup | null;
     previewMaxPx?: number;
     onClose: () => void;
     onCopyPath: (path: string) => void;
@@ -29,6 +30,23 @@
     onRevealPath,
     onOpenImage,
   }: Props = $props();
+
+  let contentReady = $state(false);
+  let deferToken = 0;
+
+  let showContentLoader = $derived(group != null && !contentReady);
+
+  $effect(() => {
+    group?.id;
+    contentReady = false;
+    const token = ++deferToken;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (token !== deferToken) return;
+        contentReady = true;
+      });
+    });
+  });
 
   function similarityPercent(score: number | null | undefined): number | null {
     if (score == null || !Number.isFinite(score)) return null;
@@ -53,9 +71,11 @@
     <div class="modal-header">
       <h2 id="group-detail-title">Group Details</h2>
       <div class="header-actions">
-        <button type="button" class="action-btn tertiary" onclick={() => onCopyAllPaths(group.images)}>
-          Copy all paths
-        </button>
+        {#if group}
+          <button type="button" class="action-btn tertiary" onclick={() => onCopyAllPaths(group.images)}>
+            Copy all paths
+          </button>
+        {/if}
         <button type="button" class="modal-close-btn" aria-label="Close group details" onclick={() => onClose()}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
@@ -66,118 +86,146 @@
     </div>
 
     <div class="modal-body">
-      <div class="detail-header">
-        <div class="detail-main">
-          <div class="result-title">{groupTitle(group)}</div>
-          <div class="result-meta">id: {group.id}</div>
-          <div class="result-meta">score: {group.score == null ? "-" : group.score.toFixed(3)}</div>
-          <div class="result-meta">images: {group.images.length}</div>
+      {#if group == null}
+        <div class="content-loading" aria-live="polite" aria-busy="true">
+          <div class="detail-spinner"></div>
+          <p>Opening group details…</p>
         </div>
-        <div class="reason-badge">{reasonKindLabel(group.reason_kind)}</div>
-      </div>
-
-      <section class="detail-section">
-        <h3>Images</h3>
-        <div class="detail-grid">
-          {#each group.images as imagePath (imagePath)}
-            <div class="detail-thumb-wrap">
-              <figure class="thumb-item detail-thumb-item" title={imagePath}>
-                <ThumbnailImage
-                  imagePath={imagePath}
-                  maxPx={previewMaxPx}
-                  alt={imagePath}
-                  class="detail-img"
-                  {onOpenImage}
-                />
-                <figcaption>{toBaseName(imagePath)}</figcaption>
-              </figure>
-              <div class="thumb-actions">
-                <button type="button" class="icon-btn" title="Copy path" onclick={() => onCopyPath(imagePath)}>Copy</button>
-                <button type="button" class="icon-btn" title="Reveal in folder" onclick={() => onRevealPath(imagePath)}>Reveal</button>
-              </div>
-            </div>
-          {/each}
+      {:else}
+        <div class="detail-header">
+          <div class="detail-main">
+            <div class="result-title">{groupTitle(group)}</div>
+            <div class="result-meta">id: {group.id}</div>
+            <div class="result-meta">score: {group.score == null ? "-" : group.score.toFixed(3)}</div>
+            <div class="result-meta">images: {group.images.length}</div>
+          </div>
+          <div class="reason-badge">{reasonKindLabel(group.reason_kind)}</div>
         </div>
-      </section>
 
-      <section class="detail-section">
-        <h3>Similarity pairs</h3>
-        {#if group.reasons.length === 0}
-          <p class="stub">No pair reasons were provided for this group.</p>
+        {#if showContentLoader}
+          <div class="content-loading" aria-live="polite" aria-busy="true">
+            <div class="detail-spinner"></div>
+            <p>Loading group details…</p>
+          </div>
         {:else}
-          <ul class="reasons-list">
-            {#each group.reasons as reason (`${reason.left}:${reason.right}:${reason.type}`)}
-              {@const pct = similarityPercent(reason.composite_score)}
-              <li class="reason-item">
-                <div class="reason-item-header">
-                  <div class="reason-pair">{toBaseName(reason.left)} ↔ {toBaseName(reason.right)}</div>
-                  <div class="reason-type">{pairReasonTypeLabel(reason.type)}</div>
-                </div>
-
-                <div class="pair-compare">
-                  <figure class="pair-thumb">
-                    <ThumbnailImage
-                      imagePath={reason.left}
-                      maxPx={previewMaxPx}
-                      alt={reason.left}
-                      class="pair-img"
-                      {onOpenImage}
-                    />
-                    <figcaption>{toBaseName(reason.left)}</figcaption>
-                  </figure>
-                  <div class="pair-score">
-                    {#if pct != null}
-                      <div class="score-value">{pct}%</div>
-                      <div class="score-bar-track">
-                        <div class="score-bar-fill" style:width="{pct}%"></div>
-                      </div>
-                      <div class="score-caption">similarity</div>
-                    {:else}
-                      <div class="score-caption">Exact match</div>
-                    {/if}
-                  </div>
-                  <figure class="pair-thumb">
-                    <ThumbnailImage
-                      imagePath={reason.right}
-                      maxPx={previewMaxPx}
-                      alt={reason.right}
-                      class="pair-img"
-                      {onOpenImage}
-                    />
-                    <figcaption>{toBaseName(reason.right)}</figcaption>
-                  </figure>
-                </div>
-
-                {#if reason.phash || reason.ssim || reason.histogram}
-                  <details class="metric-details">
-                    <summary>Metric details</summary>
-                    <div class="reason-metrics">
-                      {#if reason.composite_score != null}
-                        <span class="reason-metric">composite: {formatMetricValue(reason.composite_score)}</span>
-                      {/if}
-                      {#if reason.phash}
-                        <span class="reason-metric">
-                          pHash: score {formatMetricValue(reason.phash.score)}, raw {formatMetricValue(reason.phash.raw)}, valid {reason.phash.valid ? "yes" : "no"}
-                        </span>
-                      {/if}
-                      {#if reason.ssim}
-                        <span class="reason-metric">
-                          SSIM: score {formatMetricValue(reason.ssim.score)}, raw {formatMetricValue(reason.ssim.raw)}, valid {reason.ssim.valid ? "yes" : "no"}
-                        </span>
-                      {/if}
-                      {#if reason.histogram}
-                        <span class="reason-metric">
-                          Histogram: score {formatMetricValue(reason.histogram.score)}, raw {formatMetricValue(reason.histogram.raw)}, valid {reason.histogram.valid ? "yes" : "no"}
-                        </span>
-                      {/if}
+          <div class="detail-content">
+            <section class="detail-section">
+              <h3>Images</h3>
+              <div class="detail-grid">
+                {#each group.images as imagePath (imagePath)}
+                  <div class="detail-thumb-wrap">
+                    <figure class="thumb-item detail-thumb-item" title={imagePath}>
+                      <ThumbnailImage
+                        imagePath={imagePath}
+                        maxPx={previewMaxPx}
+                        alt={imagePath}
+                        class="detail-img"
+                        {onOpenImage}
+                      />
+                      <figcaption>{toBaseName(imagePath)}</figcaption>
+                    </figure>
+                    <div class="thumb-actions">
+                      <button type="button" class="icon-btn" title="Copy path" onclick={() => onCopyPath(imagePath)}>Copy</button>
+                      <button type="button" class="icon-btn" title="Reveal in folder" onclick={() => onRevealPath(imagePath)}>Reveal</button>
                     </div>
-                  </details>
-                {/if}
-              </li>
-            {/each}
-          </ul>
+                  </div>
+                {/each}
+              </div>
+            </section>
+
+            <section class="detail-section">
+              <h3>Similarity pairs</h3>
+              {#if group.reasons.length === 0}
+                <p class="stub">No pair reasons were provided for this group.</p>
+              {:else}
+                <ul class="reasons-list">
+                  {#each group.reasons as reason (`${reason.left}:${reason.right}:${reason.type}`)}
+                    {@const pct = similarityPercent(reason.composite_score)}
+                    <li class="reason-item">
+                      <div class="reason-item-header">
+                        <div class="reason-pair">{toBaseName(reason.left)} ↔ {toBaseName(reason.right)}</div>
+                        <div class="reason-type">{pairReasonTypeLabel(reason.type)}</div>
+                      </div>
+
+                      <div class="pair-compare">
+                        <figure class="pair-thumb">
+                          <ThumbnailImage
+                            imagePath={reason.left}
+                            maxPx={previewMaxPx}
+                            alt={reason.left}
+                            class="pair-img"
+                            {onOpenImage}
+                          />
+                          <figcaption>{toBaseName(reason.left)}</figcaption>
+                        </figure>
+                        <div class="pair-score">
+                          {#if pct != null}
+                            <div class="score-value">{pct}%</div>
+                            <div class="score-bar-track">
+                              <div class="score-bar-fill" style:width="{pct}%"></div>
+                            </div>
+                            <div class="score-caption">similarity</div>
+                          {:else}
+                            <div class="score-caption">Exact match</div>
+                          {/if}
+                        </div>
+                        <figure class="pair-thumb">
+                          <ThumbnailImage
+                            imagePath={reason.right}
+                            maxPx={previewMaxPx}
+                            alt={reason.right}
+                            class="pair-img"
+                            {onOpenImage}
+                          />
+                          <figcaption>{toBaseName(reason.right)}</figcaption>
+                        </figure>
+                      </div>
+
+                      {#if reason.phash || reason.ssim || reason.histogram}
+                        <details class="metric-details">
+                          <summary title={metricDetailsHelp.metric_details}>Metric details</summary>
+                          <div class="reason-metrics">
+                            {#if reason.composite_score != null}
+                              <span class="reason-metric">
+                                <span class="metric-label" title={metricDetailsHelp.composite}>composite</span>:
+                                {formatMetricValue(reason.composite_score)}
+                              </span>
+                            {/if}
+                            {#if reason.phash}
+                              <span class="reason-metric">
+                                <span class="metric-label" title={metricDetailsHelp.phash}>pHash</span>:
+                                <span class="metric-label" title={metricDetailsHelp.score}>score</span> {formatMetricValue(reason.phash.score)},
+                                <span class="metric-label" title={metricDetailsHelp.phash_raw}>raw</span> {formatMetricValue(reason.phash.raw)},
+                                <span class="metric-label" title={metricDetailsHelp.valid}>valid</span> {reason.phash.valid ? "yes" : "no"}
+                              </span>
+                            {/if}
+                            {#if reason.ssim}
+                              <span class="reason-metric">
+                                <span class="metric-label" title={metricDetailsHelp.ssim}>SSIM</span>:
+                                <span class="metric-label" title={metricDetailsHelp.score}>score</span> {formatMetricValue(reason.ssim.score)},
+                                <span class="metric-label" title={metricDetailsHelp.ssim_raw}>raw</span> {formatMetricValue(reason.ssim.raw)},
+                                <span class="metric-label" title={metricDetailsHelp.valid}>valid</span> {reason.ssim.valid ? "yes" : "no"}
+                              </span>
+                            {/if}
+                            {#if reason.histogram}
+                              <span class="reason-metric">
+                                <span class="metric-label" title={metricDetailsHelp.histogram}>Histogram</span>:
+                                <span class="metric-label" title={metricDetailsHelp.score}>score</span> {formatMetricValue(reason.histogram.score)},
+                                <span class="metric-label" title={metricDetailsHelp.histogram_raw}>raw</span> {formatMetricValue(reason.histogram.raw)},
+                                <span class="metric-label" title={metricDetailsHelp.valid}>valid</span> {reason.histogram.valid ? "yes" : "no"}
+                              </span>
+                            {/if}
+                          </div>
+                        </details>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </section>
+          </div>
         {/if}
-      </section>
+      {/if}
     </div>
   </div>
 </div>
@@ -248,6 +296,44 @@
   .modal-body {
     padding: 1rem;
     overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    min-height: 12rem;
+  }
+
+  .content-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem;
+    min-height: 10rem;
+    padding: 1.5rem 1rem;
+  }
+
+  .content-loading p {
+    margin: 0;
+    font-size: 0.82rem;
+    color: #c9cbd8;
+  }
+
+  .detail-spinner {
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 2px solid #3f4150;
+    border-top-color: #5c7cfa;
+    border-radius: 50%;
+    animation: detail-spin 0.7s linear infinite;
+  }
+
+  @keyframes detail-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .detail-content {
     display: flex;
     flex-direction: column;
     gap: 0.8rem;
@@ -489,5 +575,11 @@
     color: #c9cbd8;
     font-size: 0.72rem;
     padding: 0.17rem 0.48rem;
+  }
+
+  .metric-label {
+    cursor: help;
+    text-decoration: underline dotted #5a5d6e;
+    text-underline-offset: 0.12em;
   }
 </style>

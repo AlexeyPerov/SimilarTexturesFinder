@@ -737,7 +737,7 @@
     />
   {/if}
 
-  {#if selectedGroup}
+  {#if selectedGroupId != null}
     <GroupDetailModal
       group={selectedGroup}
       previewMaxPx={previewMaxPx}
