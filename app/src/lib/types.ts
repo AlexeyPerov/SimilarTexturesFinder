@@ -99,6 +99,9 @@ export type GroupPreview = {
   reasonKind: GroupReasonKind;
 };
 
+export type AppTheme = "dark" | "light";
+
 export type UiStateResponse = {
   lastInputDir: string | null;
+  theme: AppTheme;
 };

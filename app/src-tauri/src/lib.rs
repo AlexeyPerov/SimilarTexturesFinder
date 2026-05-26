@@ -60,12 +60,21 @@ struct ExportResponse {
 #[serde(rename_all = "camelCase")]
 struct UiStateResponse {
     last_input_dir: Option<String>,
+    theme: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct StoredUiStateV1 {
     version: u32,
     last_input_dir: Option<String>,
+    #[serde(default)]
+    theme: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct CountImagesResponse {
+    image_count: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -191,29 +200,52 @@ fn ui_state_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_config_dir(app)?.join(UI_STATE_FILE))
 }
 
-fn load_ui_state_from_path(path: &Path) -> UiStateResponse {
+fn normalize_theme(theme: Option<String>) -> String {
+    match theme.as_deref() {
+        Some("light") => "light".to_string(),
+        _ => "dark".to_string(),
+    }
+}
+
+fn default_ui_state() -> StoredUiStateV1 {
+    StoredUiStateV1 {
+        version: UI_STATE_SCHEMA_VERSION,
+        last_input_dir: None,
+        theme: None,
+    }
+}
+
+fn read_stored_ui_state(path: &Path) -> StoredUiStateV1 {
     if !path.exists() {
-        return UiStateResponse {
-            last_input_dir: None,
-        };
+        return default_ui_state();
     }
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
-        Err(_) => {
-            return UiStateResponse {
-                last_input_dir: None,
-            };
-        }
+        Err(_) => return default_ui_state(),
     };
     match serde_json::from_str::<StoredUiStateV1>(&text) {
-        Ok(state) if state.version == UI_STATE_SCHEMA_VERSION => UiStateResponse {
-            last_input_dir: state
-                .last_input_dir
-                .filter(|value| !value.trim().is_empty()),
-        },
-        _ => UiStateResponse {
-            last_input_dir: None,
-        },
+        Ok(state) if state.version == UI_STATE_SCHEMA_VERSION => state,
+        _ => default_ui_state(),
+    }
+}
+
+fn write_ui_state(path: &Path, state: &StoredUiStateV1) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let text = serde_json::to_string_pretty(state)
+        .map_err(|e| format!("could not serialize ui state: {e}"))?;
+    std::fs::write(path, text)
+        .map_err(|e| format!("could not write ui state file {}: {e}", path.display()))
+}
+
+fn load_ui_state_from_path(path: &Path) -> UiStateResponse {
+    let state = read_stored_ui_state(path);
+    UiStateResponse {
+        last_input_dir: state
+            .last_input_dir
+            .filter(|value| !value.trim().is_empty()),
+        theme: normalize_theme(state.theme),
     }
 }
 
@@ -222,14 +254,15 @@ fn save_last_input_dir_to_path(path: &Path, input_dir: &str) -> Result<(), Strin
     if trimmed.is_empty() {
         return Ok(());
     }
-    let payload = StoredUiStateV1 {
-        version: UI_STATE_SCHEMA_VERSION,
-        last_input_dir: Some(trimmed.to_string()),
-    };
-    let text = serde_json::to_string_pretty(&payload)
-        .map_err(|e| format!("could not serialize ui state: {e}"))?;
-    std::fs::write(path, text)
-        .map_err(|e| format!("could not write ui state file {}: {e}", path.display()))
+    let mut state = read_stored_ui_state(path);
+    state.last_input_dir = Some(trimmed.to_string());
+    write_ui_state(path, &state)
+}
+
+fn save_theme_to_path(path: &Path, theme: &str) -> Result<(), String> {
+    let mut state = read_stored_ui_state(path);
+    state.theme = Some(normalize_theme(Some(theme.to_string())));
+    write_ui_state(path, &state)
 }
 
 fn load_settings_from_path(path: &Path) -> Result<Config, String> {
@@ -472,6 +505,34 @@ fn load_ui_state(app: AppHandle) -> Result<UiStateResponse, String> {
 fn save_last_input_dir(app: AppHandle, input_dir: String) -> Result<(), String> {
     let path = ui_state_path(&app)?;
     save_last_input_dir_to_path(&path, &input_dir)
+}
+
+#[tauri::command]
+fn save_app_theme(app: AppHandle, theme: String) -> Result<(), String> {
+    let normalized = normalize_theme(Some(theme));
+    if normalized != "dark" && normalized != "light" {
+        return Err("theme must be \"dark\" or \"light\"".to_string());
+    }
+    let path = ui_state_path(&app)?;
+    save_theme_to_path(&path, &normalized)
+}
+
+#[tauri::command]
+fn count_images(request: StartScanRequest) -> Result<CountImagesResponse, String> {
+    let input_dir = request.input_dir.trim();
+    if input_dir.is_empty() {
+        return Err("input_dir is required".to_string());
+    }
+    let input = PathBuf::from(input_dir);
+    if !input.exists() {
+        return Err(format!("input path does not exist: {}", input.display()));
+    }
+    let meta = std::fs::metadata(&input).map_err(|e| e.to_string())?;
+    if !meta.is_dir() {
+        return Err(format!("input path is not a directory: {}", input.display()));
+    }
+    let image_count = similar_textures_core::scanner::scan_images(&input).len();
+    Ok(CountImagesResponse { image_count })
 }
 
 #[tauri::command]
@@ -790,6 +851,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             load_ui_state,
             save_last_input_dir,
+            save_app_theme,
+            count_images,
             load_settings,
             save_settings,
             scan_status,
@@ -880,6 +943,18 @@ mod tests {
         let path = dir.path().join("ui-state.json");
         save_last_input_dir_to_path(&path, "/tmp/textures").expect("save");
         let loaded = load_ui_state_from_path(&path);
+        assert_eq!(loaded.last_input_dir.as_deref(), Some("/tmp/textures"));
+        assert_eq!(loaded.theme, "dark");
+    }
+
+    #[test]
+    fn save_and_load_ui_state_theme_roundtrip() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("ui-state.json");
+        save_theme_to_path(&path, "light").expect("save theme");
+        save_last_input_dir_to_path(&path, "/tmp/textures").expect("save dir");
+        let loaded = load_ui_state_from_path(&path);
+        assert_eq!(loaded.theme, "light");
         assert_eq!(loaded.last_input_dir.as_deref(), Some("/tmp/textures"));
     }
 

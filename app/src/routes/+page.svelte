@@ -9,7 +9,10 @@
   import GroupDetailModal from "$lib/components/GroupDetailModal.svelte";
   import ResultsPanel from "$lib/components/ResultsPanel.svelte";
   import ScanPanel from "$lib/components/ScanPanel.svelte";
+  import AppSettingsModal from "$lib/components/AppSettingsModal.svelte";
   import SettingsModal from "$lib/components/SettingsModal.svelte";
+  import { defaultThreadCount, estimateScanTime } from "$lib/estimateScanTime";
+  import { formatSettingsSummary } from "$lib/settingsSummary";
   import {
     countUniqueImages,
     filterGroupsBySearch,
@@ -21,7 +24,7 @@
   } from "$lib/groupUtils";
   import { idleProgress, progressFromPhase } from "$lib/scanProgress";
   import { initialSettings, validateSettings } from "$lib/settingsValidation";
-  import { settingsEqual, settingsFingerprint } from "$lib/settingsUtils";
+  import { cloneAppSettings, settingsEqual, settingsFingerprint } from "$lib/settingsUtils";
   import type {
     AppSettings,
     GroupReasonKind,
@@ -31,6 +34,7 @@
     SortOption,
     TabBanner,
     UiStateResponse,
+    AppTheme,
   } from "$lib/types";
 
   type ScanStatusResponse = {
@@ -76,11 +80,17 @@
     groupCount: number;
   };
 
+  type CountImagesResponse = {
+    imageCount: number;
+  };
+
   const maxLogLines = 1500;
   const bannerAutoDismissMs = 4500;
 
   let activeTab = $state<"scan" | "results">("scan");
-  let showSettings = $state(false);
+  let showAnalysisSettings = $state(false);
+  let showAppSettings = $state(false);
+  let appTheme = $state<AppTheme>("dark");
   let running = $state(false);
   let activeScanId = $state<number | null>(null);
   let statusState = $state<ScanStatusState>("idle");
@@ -124,6 +134,7 @@
       ? null
       : `${Math.floor(lastScanDurationSeconds / 60)}:${(lastScanDurationSeconds % 60).toString().padStart(2, "0")}`,
   );
+  let settingsSummary = $derived(formatSettingsSummary(settings));
 
   function resetMessages() {
     saveMessage = "";
@@ -132,7 +143,7 @@
   }
 
   function cloneSettings(next: AppSettings): AppSettings {
-    return structuredClone(next);
+    return cloneAppSettings(next);
   }
 
   function showTabBanner(tab: "scan" | "results", kind: "success" | "error", message: string) {
@@ -219,12 +230,27 @@
     void invoke("save_last_input_dir", { inputDir: path }).catch(() => undefined);
   }
 
+  function applyTheme(theme: AppTheme) {
+    appTheme = theme;
+    document.documentElement.dataset.theme = theme;
+  }
+
   async function loadUiState() {
     try {
       const ui = await invoke<UiStateResponse>("load_ui_state");
       if (ui.lastInputDir) inputDir = ui.lastInputDir;
+      applyTheme(ui.theme === "light" ? "light" : "dark");
     } catch {
-      // Non-fatal.
+      applyTheme("dark");
+    }
+  }
+
+  async function persistAppTheme(theme: AppTheme) {
+    applyTheme(theme);
+    try {
+      await invoke("save_app_theme", { theme });
+    } catch {
+      showTabBanner(activeTab, "error", "Could not save theme preference.");
     }
   }
 
@@ -245,7 +271,7 @@
     }
     await invoke("save_settings", { settings: next });
     settings = cloneSettings(next);
-    if (showSettings && settingsEqual(settings, settingsDraft)) {
+    if (showAnalysisSettings && settingsEqual(settings, settingsDraft)) {
       settingsDraft = cloneSettings(settings);
     }
   }
@@ -260,23 +286,31 @@
     }
   }
 
-  function openSettings() {
+  function openAnalysisSettings() {
     resetMessages();
     settingsDraft = cloneSettings(settings);
-    showSettings = true;
+    showAnalysisSettings = true;
   }
 
-  function cancelSettings() {
+  function openAppSettings() {
+    showAppSettings = true;
+  }
+
+  function closeAppSettings() {
+    showAppSettings = false;
+  }
+
+  function cancelAnalysisSettings() {
     resetMessages();
     settingsDraft = cloneSettings(settings);
-    showSettings = false;
+    showAnalysisSettings = false;
   }
 
-  function requestCloseSettings() {
+  function requestCloseAnalysisSettings() {
     if (!settingsEqual(settings, settingsDraft)) {
       if (!confirm("Discard unsaved settings changes?")) return;
     }
-    cancelSettings();
+    cancelAnalysisSettings();
   }
 
   async function saveSettings() {
@@ -289,8 +323,8 @@
     }
     try {
       await persistSettings(settingsDraft);
-      showSettings = false;
-      showTabBanner(activeTab, "success", "Settings saved.");
+      showAnalysisSettings = false;
+      showTabBanner(activeTab, "success", "Analysis settings saved.");
     } catch (e) {
       loadError = `Failed to save settings: ${String(e)}`;
     }
@@ -359,6 +393,32 @@
       appendLog(`Scan start failed: ${String(e)}`);
       scanProgress = progressFromPhase("failed");
       showTabBanner(activeTab, "error", `Scan could not start: ${String(e)}`);
+    }
+  }
+
+  async function estimateTime() {
+    inputDirError = "";
+    if (!inputDir.trim()) {
+      inputDirError = "Choose an input folder before estimating scan time.";
+      return;
+    }
+
+    try {
+      const response = await invoke<CountImagesResponse>("count_images", {
+        request: { inputDir: inputDir.trim() },
+      });
+      const estimate = estimateScanTime(
+        response.imageCount,
+        settings,
+        defaultThreadCount(),
+        inputDir.trim(),
+      );
+      for (const line of estimate.lines) {
+        appendLog(line);
+      }
+    } catch (e) {
+      appendLog(`Time estimate failed: ${String(e)}`);
+      showTabBanner("scan", "error", `Time estimate failed: ${String(e)}`);
     }
   }
 
@@ -545,7 +605,7 @@
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key === ",") {
       e.preventDefault();
-      openSettings();
+      openAppSettings();
       return;
     }
     if (e.key !== "Escape") return;
@@ -554,9 +614,14 @@
       closeGroupDetails();
       return;
     }
-    if (showSettings) {
+    if (showAnalysisSettings) {
       e.preventDefault();
-      requestCloseSettings();
+      requestCloseAnalysisSettings();
+      return;
+    }
+    if (showAppSettings) {
+      e.preventDefault();
+      closeAppSettings();
     }
   }
 
@@ -650,9 +715,9 @@
       <button
         type="button"
         class="settings-btn"
-        title="Settings"
-        aria-label="Open settings"
-        onclick={() => openSettings()}
+        title="App settings"
+        aria-label="Open app settings"
+        onclick={() => openAppSettings()}
       >
         <svg
           width="18"
@@ -683,14 +748,17 @@
         banner={scanBanner}
         {logSegments}
         logsCount={logs.length}
+        {settingsSummary}
         onDismissBanner={() => (scanBanner = null)}
         onBrowse={() => void chooseInputDirectory()}
         onStartScan={() => void startScan()}
+        onEstimateTime={() => void estimateTime()}
         onCancelScan={() => void cancelScan()}
         onCopyLogs={() => void copyLogs()}
         onClearLogs={clearLogs}
         onFolderSelected={handleFolderSelected}
         onInputDirChange={() => (inputDirError = "")}
+        onOpenAnalysisSettings={() => openAnalysisSettings()}
       />
     {:else}
       <ResultsPanel
@@ -725,15 +793,23 @@
     {/if}
   </div>
 
-  {#if showSettings}
+  {#if showAnalysisSettings}
     <SettingsModal
       bind:settingsDraft
       savedSettings={settings}
       {settingsErrors}
       {saveMessage}
       {loadError}
-      onCancel={cancelSettings}
+      onCancel={cancelAnalysisSettings}
       onSave={() => void saveSettings()}
+    />
+  {/if}
+
+  {#if showAppSettings}
+    <AppSettingsModal
+      theme={appTheme}
+      onClose={closeAppSettings}
+      onThemeChange={(theme) => void persistAppTheme(theme)}
     />
   {/if}
 
@@ -764,8 +840,8 @@
       Helvetica,
       Arial,
       sans-serif;
-    background: #1a1b1e;
-    color: #e9e9ef;
+    background: var(--bg-app);
+    color: var(--text-heading);
   }
 
   :global(body) {
@@ -820,29 +896,29 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.2rem;
-    border: 1px solid #3f4150;
+    border: 1px solid var(--border);
     border-radius: 8px;
-    background: #1e1f26;
+    background: var(--bg-tab);
   }
 
   .tab {
     border: 1px solid transparent;
     border-radius: 6px;
     background: transparent;
-    color: #a1a3b0;
+    color: var(--text-tab);
     font-size: 0.82rem;
     padding: 0.3rem 0.65rem;
     cursor: pointer;
   }
 
   .tab:hover {
-    color: #fff;
+    color: var(--accent-hover);
   }
 
   .tab.tab-active {
-    background: #32343f;
-    color: #f2f3f7;
-    border-color: #474957;
+    background: var(--bg-tab-active);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
   }
 
   .settings-btn {
@@ -850,9 +926,9 @@
     margin-top: 0.15rem;
     padding: 0.45rem;
     border-radius: 6px;
-    border: 1px solid #474957;
-    background: #32343f;
-    color: #d7d8e0;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-button);
+    color: var(--text-secondary);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -861,7 +937,7 @@
   }
 
   .settings-btn:hover {
-    border-color: #5c7cfa;
-    color: #fff;
+    border-color: var(--accent);
+    color: var(--accent-hover);
   }
 </style>

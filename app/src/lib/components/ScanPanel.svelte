@@ -18,14 +18,17 @@
     banner: TabBanner;
     logSegments: ConsoleSegment[];
     logsCount: number;
+    settingsSummary: string;
     onDismissBanner?: () => void;
     onBrowse: () => void;
     onStartScan: () => void;
+    onEstimateTime: () => void;
     onCancelScan: () => void;
     onCopyLogs: () => void;
     onClearLogs: () => void;
     onFolderSelected: (path: string) => void;
     onInputDirChange?: () => void;
+    onOpenAnalysisSettings: () => void;
   };
 
   let {
@@ -38,14 +41,17 @@
     banner,
     logSegments,
     logsCount,
+    settingsSummary,
     onDismissBanner,
     onBrowse,
     onStartScan,
+    onEstimateTime,
     onCancelScan,
     onCopyLogs,
     onClearLogs,
     onFolderSelected,
     onInputDirChange,
+    onOpenAnalysisSettings,
   }: Props = $props();
 
   let consoleEl = $state<HTMLDivElement | null>(null);
@@ -126,6 +132,22 @@
       <span class="field-error">{inputDirError}</span>
     {/if}
     <p class="drop-hint">Drag a folder here or use Browse…</p>
+    <button
+      type="button"
+      class="analysis-settings-btn"
+      disabled={running}
+      onclick={() => onOpenAnalysisSettings()}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M10 2v7.31" />
+        <path d="M14 9.3V2" />
+        <path d="M8.5 2h7" />
+        <path d="M14 9.3a6.5 6.5 0 1 1-4 0" />
+        <path d="M5.52 16h12.96" />
+      </svg>
+      Analysis settings
+    </button>
+    <p class="settings-summary">{settingsSummary}</p>
   </div>
 
   <div class="status-row">
@@ -147,6 +169,9 @@
   <div class="actions">
     <button type="button" class="action-btn" disabled={running} onclick={() => onStartScan()}>
       Run Scan
+    </button>
+    <button type="button" class="action-btn secondary" disabled={running} onclick={() => onEstimateTime()}>
+      Estimate Time
     </button>
     <button type="button" class="action-btn secondary" disabled={!running} onclick={() => onCancelScan()}>
       Cancel
@@ -184,14 +209,14 @@
     gap: 0.65rem;
     padding: 1rem;
     border-radius: 10px;
-    background: #24252c;
-    border: 1px solid #34353f;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
     min-height: 0;
   }
 
   .scan-panel.drag-over {
-    border-color: #5c7cfa;
-    box-shadow: 0 0 0 1px rgb(92 124 250 / 35%);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-ring);
   }
 
   .field {
@@ -204,7 +229,7 @@
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #8b8d9a;
+    color: var(--text-faint);
     font-weight: 600;
   }
 
@@ -222,24 +247,24 @@
     box-sizing: border-box;
     padding: 0.55rem 0.65rem;
     border-radius: 6px;
-    border: 1px solid #3f4150;
-    background: #1e1f26;
-    color: #f2f3f7;
+    border: 1px solid var(--border);
+    background: var(--bg-input);
+    color: var(--text-primary);
     font-size: 0.85rem;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 
   .path-input-error {
-    border-color: #8b3a52;
+    border-color: var(--border-error);
   }
 
   .browse-btn {
     flex-shrink: 0;
     padding: 0.55rem 0.75rem;
     border-radius: 6px;
-    border: 1px solid #474957;
-    background: #32343f;
-    color: #d7d8e0;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-button);
+    color: var(--text-secondary);
     font-size: 0.82rem;
     line-height: 1;
     cursor: pointer;
@@ -247,8 +272,8 @@
   }
 
   .browse-btn:hover:not(:disabled) {
-    border-color: #5c7cfa;
-    color: #fff;
+    border-color: var(--accent);
+    color: var(--accent-hover);
   }
 
   .browse-btn:disabled {
@@ -259,11 +284,43 @@
   .drop-hint {
     margin: 0;
     font-size: 0.72rem;
-    color: #8b8d9a;
+    color: var(--text-faint);
+  }
+
+  .analysis-settings-btn {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.15rem;
+    padding: 0.4rem 0.65rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-panel-alt);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+
+  .analysis-settings-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent-hover);
+  }
+
+  .analysis-settings-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .settings-summary {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    color: var(--text-muted);
   }
 
   .field-error {
-    color: #f0a8a8;
+    color: var(--error);
     font-size: 0.72rem;
     line-height: 1.2;
   }
@@ -275,16 +332,16 @@
   }
 
   .status-pill {
-    border: 1px solid #3f4150;
+    border: 1px solid var(--border);
     border-radius: 999px;
     padding: 0.2rem 0.55rem;
     font-size: 0.74rem;
-    color: #d8dae4;
-    background: #1e1f26;
+    color: var(--text-secondary);
+    background: var(--bg-panel-alt);
   }
 
   .status-pill.muted {
-    color: #aeb1bf;
+    color: var(--text-muted);
   }
 
   .progress-block {
@@ -295,7 +352,7 @@
 
   .progress-label {
     font-size: 0.76rem;
-    color: #aeb1bf;
+    color: var(--text-muted);
   }
 
   .actions {
@@ -308,17 +365,17 @@
     align-self: flex-start;
     padding: 0.45rem 0.85rem;
     border-radius: 6px;
-    border: 1px solid #474957;
-    background: #32343f;
-    color: #d7d8e0;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-button);
+    color: var(--text-secondary);
     font-size: 0.82rem;
     font-weight: 500;
     cursor: pointer;
   }
 
   .action-btn:hover:not(:disabled) {
-    border-color: #5c7cfa;
-    color: #fff;
+    border-color: var(--accent);
+    color: var(--accent-hover);
   }
 
   .action-btn:disabled {
@@ -328,9 +385,9 @@
 
   .action-btn.secondary,
   .action-btn.tertiary {
-    border-color: #3f4150;
-    background: #2a2b33;
-    color: #a1a3b0;
+    border-color: var(--border);
+    background: var(--bg-button-secondary);
+    color: var(--text-tab);
   }
 
   .stub-block {
@@ -348,7 +405,7 @@
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #8b8d9a;
+    color: var(--text-faint);
     font-weight: 600;
   }
 
@@ -357,11 +414,11 @@
     margin: 0;
     padding: 0.55rem 0.65rem;
     border-radius: 6px;
-    border: 1px solid #3f4150;
-    background: #1a1b21;
+    border: 1px solid var(--border);
+    background: var(--bg-console);
     font-size: 0.78rem;
     line-height: 1.45;
-    color: #9ea1ad;
+    color: var(--text-muted);
     overflow: auto;
     min-height: 6rem;
     display: flex;
@@ -380,6 +437,6 @@
   }
 
   .console-segment-error {
-    color: #de3576;
+    color: var(--error-strong);
   }
 </style>

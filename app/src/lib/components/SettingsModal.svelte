@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { AppSettings, SettingsValidationErrors } from "$lib/types";
-  import { applySettingsPreset, type SettingsPresetId } from "$lib/settingsPresets";
+  import { applySettingsPreset, presetDescriptions, type SettingsPresetId } from "$lib/settingsPresets";
   import { settingsHelp } from "$lib/settingsHelp";
   import { settingsEqual } from "$lib/settingsUtils";
   import { trapFocus } from "$lib/modalFocus";
@@ -48,12 +48,12 @@
     class="modal"
     role="dialog"
     aria-modal="true"
-    aria-labelledby="settings-title"
+    aria-labelledby="analysis-settings-title"
     use:trapFocus
   >
     <div class="modal-header">
-      <h2 id="settings-title">Settings</h2>
-      <button type="button" class="modal-close-btn" aria-label="Close settings" onclick={() => requestClose()}>
+      <h2 id="analysis-settings-title">Analysis settings</h2>
+      <button type="button" class="modal-close-btn" aria-label="Close analysis settings" onclick={() => requestClose()}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
@@ -69,6 +69,11 @@
         <button type="button" class="preset-btn" onclick={() => applyPreset("strict")}>Strict</button>
         <span class="presets-hint">Apply a preset, then click Save.</span>
       </div>
+      <ul class="preset-descriptions">
+        <li><strong>Fast</strong> — {presetDescriptions.fast}</li>
+        <li><strong>Balanced</strong> — {presetDescriptions.balanced}</li>
+        <li><strong>Strict</strong> — {presetDescriptions.strict}</li>
+      </ul>
 
       <details class="settings-section" open>
         <summary>Matching</summary>
@@ -97,7 +102,7 @@
         </div>
       </details>
 
-      <details class="settings-section">
+      <details class="settings-section" open>
         <summary>Transforms</summary>
         <div class="settings-grid">
           <label title={settingsHelp.enable_alpha_crop}>
@@ -115,7 +120,7 @@
         </div>
       </details>
 
-      <details class="settings-section">
+      <details class="settings-section" open>
         <summary>Weights &amp; thresholds</summary>
         <div class="settings-grid">
           <label title={settingsHelp.phash_weight}>
@@ -146,7 +151,7 @@
         </div>
       </details>
 
-      <details class="settings-section">
+      <details class="settings-section" open>
         <summary>Performance</summary>
         <div class="settings-grid">
           <label title={settingsHelp.resize_size}>
@@ -187,7 +192,7 @@
         </div>
       </details>
 
-      <details class="settings-section">
+      <details class="settings-section" open>
         <summary>Advanced</summary>
         <div class="settings-grid">
           <label title={settingsHelp.hash_algorithm}>
@@ -222,21 +227,21 @@
     position: fixed;
     inset: 0;
     z-index: 200;
-    background: rgb(0 0 0 / 55%);
+    background: var(--bg-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .modal {
-    background: #24252c;
-    border: 1px solid #3f4150;
+    background: var(--bg-modal);
+    border: 1px solid var(--border);
     border-radius: 12px;
     width: min(54rem, 95vw);
     max-height: 92vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 8px 32px rgb(0 0 0 / 45%);
+    box-shadow: var(--shadow-modal);
   }
 
   .modal-header {
@@ -244,14 +249,14 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.85rem 1rem;
-    border-bottom: 1px solid #34353f;
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .modal-header h2 {
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #f2f3f7;
+    color: var(--text-primary);
   }
 
   .modal-close-btn {
@@ -259,14 +264,14 @@
     border-radius: 4px;
     border: 1px solid transparent;
     background: transparent;
-    color: #8b8d9a;
+    color: var(--text-faint);
     cursor: pointer;
   }
 
   .modal-close-btn:hover {
-    color: #fff;
-    border-color: #474957;
-    background: #32343f;
+    color: var(--accent-hover);
+    border-color: var(--border-strong);
+    background: var(--bg-button);
   }
 
   .modal-body {
@@ -286,34 +291,50 @@
 
   .presets-label {
     font-size: 0.76rem;
-    color: #aeb1bf;
+    color: var(--text-muted);
     font-weight: 600;
   }
 
   .preset-btn {
-    border: 1px solid #3f4150;
+    border: 1px solid var(--border);
     border-radius: 999px;
-    background: #1e1f26;
-    color: #d7d8e0;
+    background: var(--bg-panel-alt);
+    color: var(--text-secondary);
     font-size: 0.74rem;
     padding: 0.22rem 0.6rem;
     cursor: pointer;
   }
 
   .preset-btn:hover {
-    border-color: #5c7cfa;
-    color: #fff;
+    border-color: var(--accent);
+    color: var(--accent-hover);
   }
 
   .presets-hint {
     font-size: 0.72rem;
-    color: #8b8d9a;
+    color: var(--text-faint);
+  }
+
+  .preset-descriptions {
+    margin: 0;
+    padding: 0 0 0 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.28rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+
+  .preset-descriptions strong {
+    color: var(--text-secondary);
+    font-weight: 600;
   }
 
   .settings-section {
-    border: 1px solid #34353f;
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
-    background: #1f2027;
+    background: var(--bg-modal-section);
     padding: 0.55rem 0.65rem;
   }
 
@@ -321,7 +342,7 @@
     cursor: pointer;
     font-size: 0.84rem;
     font-weight: 600;
-    color: #d9dbea;
+    color: var(--text-secondary);
     margin-bottom: 0.35rem;
   }
 
@@ -337,7 +358,7 @@
     flex-direction: column;
     gap: 0.35rem;
     font-size: 0.78rem;
-    color: #d7d8e0;
+    color: var(--text-secondary);
   }
 
   .field-label {
@@ -355,33 +376,33 @@
     box-sizing: border-box;
     padding: 0.45rem 0.55rem;
     border-radius: 6px;
-    border: 1px solid #3f4150;
-    background: #1e1f26;
-    color: #f2f3f7;
+    border: 1px solid var(--border);
+    background: var(--bg-input);
+    color: var(--text-primary);
     font-size: 0.82rem;
   }
 
   .orb-note {
     margin: 0.45rem 0 0;
     font-size: 0.72rem;
-    color: #8b8d9a;
+    color: var(--text-faint);
   }
 
   .field-error {
-    color: #f0a8a8;
+    color: var(--error);
     font-size: 0.72rem;
     line-height: 1.2;
   }
 
   .save-ok {
     margin: 0;
-    color: #8fd49a;
+    color: var(--success);
     font-size: 0.78rem;
   }
 
   .save-error {
     margin: 0;
-    color: #f0a8a8;
+    color: var(--error);
     font-size: 0.78rem;
   }
 
@@ -390,28 +411,28 @@
     justify-content: flex-end;
     gap: 0.45rem;
     padding: 0.75rem 1rem 1rem;
-    border-top: 1px solid #34353f;
+    border-top: 1px solid var(--border-subtle);
   }
 
   .action-btn {
     padding: 0.45rem 0.85rem;
     border-radius: 6px;
-    border: 1px solid #474957;
-    background: #32343f;
-    color: #d7d8e0;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-button);
+    color: var(--text-secondary);
     font-size: 0.82rem;
     font-weight: 500;
     cursor: pointer;
   }
 
   .action-btn:hover {
-    border-color: #5c7cfa;
-    color: #fff;
+    border-color: var(--accent);
+    color: var(--accent-hover);
   }
 
   .action-btn.secondary {
-    border-color: #3f4150;
-    background: #2a2b33;
-    color: #a1a3b0;
+    border-color: var(--border);
+    background: var(--bg-button-secondary);
+    color: var(--text-tab);
   }
 </style>

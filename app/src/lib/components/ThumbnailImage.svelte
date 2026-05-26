@@ -88,15 +88,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #101116;
+    background: var(--bg-thumb);
     z-index: 1;
   }
 
   .thumb-spinner {
     width: 1.1rem;
     height: 1.1rem;
-    border: 2px solid #3f4150;
-    border-top-color: #5c7cfa;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: thumb-spin 0.7s linear infinite;
   }
@@ -111,7 +111,7 @@
     display: block;
     width: 100%;
     object-fit: cover;
-    background: #101116;
+    background: var(--bg-thumb);
     opacity: 0;
     transition: opacity 0.15s ease;
   }

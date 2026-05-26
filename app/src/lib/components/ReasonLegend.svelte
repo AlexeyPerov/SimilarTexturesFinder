@@ -16,17 +16,17 @@
 
 <style>
   .reason-legend {
-    border: 1px solid #3f4150;
+    border: 1px solid var(--border);
     border-radius: 8px;
-    background: #1e1f26;
+    background: var(--bg-panel-alt);
     padding: 0.45rem 0.6rem;
     font-size: 0.76rem;
-    color: #aeb1bf;
+    color: var(--text-muted);
   }
 
   .reason-legend summary {
     cursor: pointer;
-    color: #d7d8e0;
+    color: var(--text-secondary);
     font-weight: 520;
   }
 
@@ -40,7 +40,7 @@
 
   .legend-label {
     font-weight: 600;
-    color: #dce3ff;
+    color: var(--text-accent-label);
     margin-right: 0.35rem;
   }
 </style>

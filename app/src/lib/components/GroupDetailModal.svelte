@@ -235,21 +235,21 @@
     position: fixed;
     inset: 0;
     z-index: 200;
-    background: rgb(0 0 0 / 55%);
+    background: var(--bg-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .modal {
-    background: #24252c;
-    border: 1px solid #3f4150;
+    background: var(--bg-modal);
+    border: 1px solid var(--border);
     border-radius: 12px;
     width: min(54rem, 95vw);
     max-height: 92vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 8px 32px rgb(0 0 0 / 45%);
+    box-shadow: var(--shadow-modal);
   }
 
   .detail-modal {
@@ -261,7 +261,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.85rem 1rem;
-    border-bottom: 1px solid #34353f;
+    border-bottom: 1px solid var(--border-subtle);
     gap: 0.5rem;
   }
 
@@ -269,7 +269,7 @@
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    color: #f2f3f7;
+    color: var(--text-primary);
   }
 
   .header-actions {
@@ -283,14 +283,14 @@
     border-radius: 4px;
     border: 1px solid transparent;
     background: transparent;
-    color: #8b8d9a;
+    color: var(--text-faint);
     cursor: pointer;
   }
 
   .modal-close-btn:hover {
-    color: #fff;
-    border-color: #474957;
-    background: #32343f;
+    color: var(--accent-hover);
+    border-color: var(--border-strong);
+    background: var(--bg-button);
   }
 
   .modal-body {
@@ -315,14 +315,14 @@
   .content-loading p {
     margin: 0;
     font-size: 0.82rem;
-    color: #c9cbd8;
+    color: var(--text-secondary);
   }
 
   .detail-spinner {
     width: 1.75rem;
     height: 1.75rem;
-    border: 2px solid #3f4150;
-    border-top-color: #5c7cfa;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: detail-spin 0.7s linear infinite;
   }
@@ -356,19 +356,19 @@
 
   .result-title {
     font-weight: 600;
-    color: #f0f1f6;
+    color: var(--text-secondary);
   }
 
   .result-meta {
     font-size: 0.75rem;
-    color: #aeb1bf;
+    color: var(--text-muted);
   }
 
   .reason-badge {
-    border: 1px solid #4f5f9f;
+    border: 1px solid var(--border-tag);
     border-radius: 999px;
-    background: rgb(92 124 250 / 14%);
-    color: #dce3ff;
+    background: var(--bg-tag);
+    color: var(--text-accent-label);
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -385,7 +385,7 @@
   .detail-section h3 {
     margin: 0;
     font-size: 0.9rem;
-    color: #d9dbea;
+    color: var(--text-secondary);
   }
 
   .detail-grid {
@@ -402,9 +402,9 @@
 
   .thumb-item {
     margin: 0;
-    border: 1px solid #34353f;
+    border: 1px solid var(--border-subtle);
     border-radius: 6px;
-    background: #181920;
+    background: var(--bg-card-inner);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -417,7 +417,7 @@
   .thumb-item figcaption {
     padding: 0.25rem;
     font-size: 0.66rem;
-    color: #9ea1ad;
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -431,10 +431,10 @@
 
   .icon-btn,
   .action-btn.tertiary {
-    border: 1px solid #3f4150;
+    border: 1px solid var(--border);
     border-radius: 4px;
-    background: #1e1f26;
-    color: #aeb1bf;
+    background: var(--bg-panel-alt);
+    color: var(--text-muted);
     font-size: 0.66rem;
     padding: 0.15rem 0.35rem;
     cursor: pointer;
@@ -442,14 +442,14 @@
 
   .icon-btn:hover,
   .action-btn.tertiary:hover {
-    border-color: #5c7cfa;
-    color: #fff;
+    border-color: var(--accent);
+    color: var(--accent-hover);
   }
 
   .stub {
     margin: 0;
     font-size: 0.8rem;
-    color: #b4b6c2;
+    color: var(--text-muted);
   }
 
   .reasons-list {
@@ -462,9 +462,9 @@
   }
 
   .reason-item {
-    border: 1px solid #34353f;
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
-    background: #1f2027;
+    background: var(--bg-modal-section);
     padding: 0.5rem 0.6rem;
     display: flex;
     flex-direction: column;
@@ -480,14 +480,14 @@
   }
 
   .reason-pair {
-    color: #f0f1f6;
+    color: var(--text-secondary);
     font-size: 0.78rem;
     font-weight: 520;
   }
 
   .reason-type {
     font-size: 0.7rem;
-    color: #aeb1bf;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
@@ -501,9 +501,9 @@
 
   .pair-thumb {
     margin: 0;
-    border: 1px solid #34353f;
+    border: 1px solid var(--border-subtle);
     border-radius: 6px;
-    background: #181920;
+    background: var(--bg-card-inner);
     overflow: hidden;
   }
 
@@ -514,7 +514,7 @@
   .pair-thumb figcaption {
     padding: 0.25rem;
     font-size: 0.66rem;
-    color: #9ea1ad;
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -531,26 +531,26 @@
   .score-value {
     font-size: 1rem;
     font-weight: 650;
-    color: #dce3ff;
+    color: var(--text-accent-label);
   }
 
   .score-bar-track {
     width: 100%;
     height: 0.35rem;
     border-radius: 999px;
-    background: #1a1b21;
-    border: 1px solid #3f4150;
+    background: var(--bg-console);
+    border: 1px solid var(--border);
     overflow: hidden;
   }
 
   .score-bar-fill {
     height: 100%;
-    background: #5c7cfa;
+    background: var(--accent);
   }
 
   .score-caption {
     font-size: 0.68rem;
-    color: #8b8d9a;
+    color: var(--text-faint);
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
@@ -558,7 +558,7 @@
   .metric-details summary {
     cursor: pointer;
     font-size: 0.72rem;
-    color: #aeb1bf;
+    color: var(--text-muted);
   }
 
   .reason-metrics {
@@ -569,17 +569,17 @@
   }
 
   .reason-metric {
-    border: 1px solid #3f4150;
+    border: 1px solid var(--border);
     border-radius: 999px;
-    background: #1a1b21;
-    color: #c9cbd8;
+    background: var(--bg-console);
+    color: var(--text-secondary);
     font-size: 0.72rem;
     padding: 0.17rem 0.48rem;
   }
 
   .metric-label {
     cursor: help;
-    text-decoration: underline dotted #5a5d6e;
+    text-decoration: underline dotted var(--link-underline);
     text-underline-offset: 0.12em;
   }
 </style>

@@ -33,15 +33,15 @@
   }
 
   .banner-success {
-    border: 1px solid #3d6b47;
-    background: rgb(143 212 154 / 12%);
-    color: #b8ebc0;
+    border: 1px solid var(--border-success);
+    background: var(--success-banner-bg);
+    color: var(--success-banner-text);
   }
 
   .banner-error {
-    border: 1px solid #8b3a52;
-    background: rgb(222 53 118 / 12%);
-    color: #f0b8c8;
+    border: 1px solid var(--border-error);
+    background: var(--error-banner-bg);
+    color: var(--error-banner-text);
   }
 
   .banner-message {

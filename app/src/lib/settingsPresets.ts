@@ -3,6 +3,12 @@ import { initialSettings } from "$lib/settingsValidation";
 
 export type SettingsPresetId = "fast" | "balanced" | "strict";
 
+export const presetDescriptions: Record<SettingsPresetId, string> = {
+  fast: "pHash + histogram only; higher threshold; no transforms — fastest scans, fewer matches.",
+  balanced: "Default metrics and thresholds — good balance of speed and accuracy.",
+  strict: "All metrics, lower threshold, optional transforms — slowest, most thorough.",
+};
+
 export function applySettingsPreset(id: SettingsPresetId): AppSettings {
   switch (id) {
     case "fast":

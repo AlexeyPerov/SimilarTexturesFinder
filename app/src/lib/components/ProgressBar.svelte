@@ -39,15 +39,15 @@
   .progress-track {
     height: 0.45rem;
     border-radius: 999px;
-    background: #1a1b21;
-    border: 1px solid #3f4150;
+    background: var(--bg-console);
+    border: 1px solid var(--border);
     overflow: hidden;
   }
 
   .progress-fill {
     height: 100%;
     border-radius: 999px;
-    background: #5c7cfa;
+    background: var(--accent);
   }
 
   .progress-fill.determinate {
@@ -70,6 +70,6 @@
 
   .progress-meta {
     font-size: 0.72rem;
-    color: #aeb1bf;
+    color: var(--text-muted);
   }
 </style>
