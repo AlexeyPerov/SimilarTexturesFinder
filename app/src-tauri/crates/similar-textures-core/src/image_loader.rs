@@ -56,6 +56,11 @@ impl ImageData {
         }
     }
 
+    /// Read original pixel dimensions from file headers without full decode.
+    pub fn read_dimensions(path: &Path) -> Result<(u32, u32), String> {
+        image::image_dimensions(path).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
     /// Decode image at `path`; on failure returns `Err(reason)`.
     pub fn decode_path(path: &Path, max_dimension_px: Option<u32>) -> Result<Self, String> {
         let img = image::open(path).map_err(|e| format!("{}: {e}", path.display()))?;

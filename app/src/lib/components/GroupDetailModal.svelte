@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ImagePreviewLightbox from "$lib/components/ImagePreviewLightbox.svelte";
   import ThumbnailImage from "$lib/components/ThumbnailImage.svelte";
   import {
     formatMetricValue,
@@ -7,6 +8,10 @@
     reasonKindLabel,
     toBaseName,
   } from "$lib/groupUtils";
+  import {
+    formatImageSize,
+    type ImageDimensions,
+  } from "$lib/imagePreview";
   import type { ScanGroup } from "$lib/types";
   import { metricDetailsHelp } from "$lib/settingsHelp";
   import { trapFocus } from "$lib/modalFocus";
@@ -14,31 +19,35 @@
   type Props = {
     group: ScanGroup | null;
     previewMaxPx?: number;
+    lightboxMaxPx?: number;
     onClose: () => void;
     onCopyPath: (path: string) => void;
     onCopyAllPaths: (paths: string[]) => void;
     onRevealPath: (path: string) => void;
-    onOpenImage?: (path: string) => void;
   };
 
   let {
     group,
     previewMaxPx = 256,
+    lightboxMaxPx = 1024,
     onClose,
     onCopyPath,
     onCopyAllPaths,
     onRevealPath,
-    onOpenImage,
   }: Props = $props();
 
   let contentReady = $state(false);
   let deferToken = 0;
+  let lightboxPath = $state<string | null>(null);
+  let imageMeta = $state(new Map<string, ImageDimensions>());
 
   let showContentLoader = $derived(group != null && !contentReady);
 
   $effect(() => {
     group?.id;
     contentReady = false;
+    lightboxPath = null;
+    imageMeta = new Map();
     const token = ++deferToken;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -51,6 +60,22 @@
   function similarityPercent(score: number | null | undefined): number | null {
     if (score == null || !Number.isFinite(score)) return null;
     return Math.round(Math.max(0, Math.min(1, score)) * 100);
+  }
+
+  function openLightbox(path: string) {
+    lightboxPath = path;
+  }
+
+  function closeLightbox() {
+    lightboxPath = null;
+  }
+
+  function rememberDimensions(path: string, dims: ImageDimensions) {
+    if (imageMeta.get(path)?.width === dims.width && imageMeta.get(path)?.height === dims.height) {
+      return;
+    }
+    imageMeta.set(path, dims);
+    imageMeta = new Map(imageMeta);
   }
 </script>
 
@@ -113,23 +138,52 @@
               <h3>Images</h3>
               <div class="detail-grid">
                 {#each group.images as imagePath (imagePath)}
-                  <div class="detail-thumb-wrap">
-                    <figure class="thumb-item detail-thumb-item" title={imagePath}>
-                      <ThumbnailImage
-                        imagePath={imagePath}
-                        maxPx={previewMaxPx}
-                        alt={imagePath}
-                        class="detail-img"
-                        {onOpenImage}
-                      />
-                      <figcaption>{toBaseName(imagePath)}</figcaption>
-                    </figure>
-                    <div class="thumb-actions">
-                      <button type="button" class="icon-btn" title="Copy path" onclick={() => onCopyPath(imagePath)}>Copy</button>
-                      <button type="button" class="icon-btn" title="Reveal in folder" onclick={() => onRevealPath(imagePath)}>Reveal</button>
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    class="detail-thumb-btn"
+                    aria-label={`Preview ${toBaseName(imagePath)}`}
+                    onclick={() => openLightbox(imagePath)}
+                  >
+                    <ThumbnailImage
+                      imagePath={imagePath}
+                      maxPx={previewMaxPx}
+                      fit="contain"
+                      alt={imagePath}
+                      class="detail-img"
+                      onDimensions={(dims) => rememberDimensions(imagePath, dims)}
+                    />
+                  </button>
                 {/each}
+              </div>
+
+              <div class="image-table-wrap">
+                <table class="image-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Path</th>
+                      <th scope="col">Size</th>
+                      <th scope="col"><span class="sr-only">Actions</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each group.images as imagePath (imagePath)}
+                      <tr>
+                        <td class="path-cell">
+                          <code class="path-text" title={imagePath}>{imagePath}</code>
+                        </td>
+                        <td class="size-cell">{formatImageSize(imageMeta.get(imagePath))}</td>
+                        <td class="actions-cell">
+                          <button type="button" class="icon-btn" onclick={() => onCopyPath(imagePath)}>
+                            Copy path
+                          </button>
+                          <button type="button" class="icon-btn" onclick={() => onRevealPath(imagePath)}>
+                            Reveal
+                          </button>
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
               </div>
             </section>
 
@@ -148,16 +202,24 @@
                       </div>
 
                       <div class="pair-compare">
-                        <figure class="pair-thumb">
-                          <ThumbnailImage
-                            imagePath={reason.left}
-                            maxPx={previewMaxPx}
-                            alt={reason.left}
-                            class="pair-img"
-                            {onOpenImage}
-                          />
-                          <figcaption>{toBaseName(reason.left)}</figcaption>
-                        </figure>
+                        <button
+                          type="button"
+                          class="pair-thumb-btn"
+                          aria-label={`Preview ${toBaseName(reason.left)}`}
+                          onclick={() => openLightbox(reason.left)}
+                        >
+                          <figure class="pair-thumb">
+                            <ThumbnailImage
+                              imagePath={reason.left}
+                              maxPx={previewMaxPx}
+                              fit="contain"
+                              alt={reason.left}
+                              class="pair-img"
+                              onDimensions={(dims) => rememberDimensions(reason.left, dims)}
+                            />
+                            <figcaption>{toBaseName(reason.left)}</figcaption>
+                          </figure>
+                        </button>
                         <div class="pair-score">
                           {#if pct != null}
                             <div class="score-value">{pct}%</div>
@@ -169,16 +231,24 @@
                             <div class="score-caption">Exact match</div>
                           {/if}
                         </div>
-                        <figure class="pair-thumb">
-                          <ThumbnailImage
-                            imagePath={reason.right}
-                            maxPx={previewMaxPx}
-                            alt={reason.right}
-                            class="pair-img"
-                            {onOpenImage}
-                          />
-                          <figcaption>{toBaseName(reason.right)}</figcaption>
-                        </figure>
+                        <button
+                          type="button"
+                          class="pair-thumb-btn"
+                          aria-label={`Preview ${toBaseName(reason.right)}`}
+                          onclick={() => openLightbox(reason.right)}
+                        >
+                          <figure class="pair-thumb">
+                            <ThumbnailImage
+                              imagePath={reason.right}
+                              maxPx={previewMaxPx}
+                              fit="contain"
+                              alt={reason.right}
+                              class="pair-img"
+                              onDimensions={(dims) => rememberDimensions(reason.right, dims)}
+                            />
+                            <figcaption>{toBaseName(reason.right)}</figcaption>
+                          </figure>
+                        </button>
                       </div>
 
                       {#if reason.phash || reason.ssim || reason.histogram}
@@ -229,6 +299,16 @@
     </div>
   </div>
 </div>
+
+{#if lightboxPath}
+  <ImagePreviewLightbox
+    imagePath={lightboxPath}
+    maxPx={lightboxMaxPx}
+    dimensions={imageMeta.get(lightboxPath)}
+    onClose={closeLightbox}
+    onCopyPath={onCopyPath}
+  />
+{/if}
 
 <style>
   .overlay {
@@ -394,39 +474,107 @@
     gap: 0.45rem;
   }
 
-  .detail-thumb-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .thumb-item {
+  .detail-thumb-btn {
     margin: 0;
+    padding: 0;
     border: 1px solid var(--border-subtle);
     border-radius: 6px;
     background: var(--bg-card-inner);
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    cursor: pointer;
+    display: block;
+    width: 100%;
+    text-align: left;
+  }
+
+  .detail-thumb-btn:hover {
+    border-color: var(--accent);
+  }
+
+  .detail-thumb-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   :global(.detail-img) {
     height: 110px;
   }
 
-  .thumb-item figcaption {
-    padding: 0.25rem;
-    font-size: 0.66rem;
-    color: var(--text-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .image-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--bg-modal-section);
   }
 
-  .thumb-actions {
-    display: flex;
-    gap: 0.25rem;
-    padding: 0.25rem;
+  .image-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.76rem;
+  }
+
+  .image-table th,
+  .image-table td {
+    padding: 0.45rem 0.55rem;
+    border-bottom: 1px solid var(--border-subtle);
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .image-table th {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--bg-panel-alt);
+  }
+
+  .image-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .path-cell {
+    max-width: 0;
+    width: 100%;
+  }
+
+  .path-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.72rem;
+    user-select: all;
+  }
+
+  .size-cell {
+    white-space: nowrap;
+    color: var(--text-muted);
+    width: 1%;
+  }
+
+  .actions-cell {
+    white-space: nowrap;
+    width: 1%;
+  }
+
+  .actions-cell .icon-btn + .icon-btn {
+    margin-left: 0.25rem;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .icon-btn,
@@ -497,6 +645,22 @@
     grid-template-columns: 1fr auto 1fr;
     gap: 0.55rem;
     align-items: center;
+  }
+
+  .pair-thumb-btn {
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: block;
+    width: 100%;
+    text-align: left;
+  }
+
+  .pair-thumb-btn:focus-visible .pair-thumb {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .pair-thumb {

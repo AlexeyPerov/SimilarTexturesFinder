@@ -100,6 +100,8 @@ struct ImagePreviewRequest {
 #[serde(rename_all = "camelCase")]
 struct ImagePreviewResponse {
     path: String,
+    width: u32,
+    height: u32,
 }
 
 const DEFAULT_PREVIEW_MAX_PX: u32 = 256;
@@ -747,6 +749,13 @@ async fn get_image_preview(
     let max_px = request.max_px.unwrap_or(DEFAULT_PREVIEW_MAX_PX).max(1);
     let cache_dir = preview_cache_dir(&app)?;
     let cache_path = cache_dir.join(format!("{}.jpg", preview_cache_key(&source, max_px)));
+    let (width, height) = tauri::async_runtime::spawn_blocking({
+        let source = source.clone();
+        move || ImageData::read_dimensions(&source)
+    })
+    .await
+    .map_err(|e| format!("dimensions task failed: {e}"))??;
+
     if !cache_path.exists() {
         let source_for_preview = source.clone();
         let cache_path_for_preview = cache_path.clone();
@@ -761,6 +770,8 @@ async fn get_image_preview(
     }
     Ok(ImagePreviewResponse {
         path: cache_path.to_string_lossy().to_string(),
+        width,
+        height,
     })
 }
 

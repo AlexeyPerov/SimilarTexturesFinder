@@ -122,6 +122,7 @@
   let bannerTimer: ReturnType<typeof setTimeout> | undefined;
 
   let previewMaxPx = $derived(settings.max_decode_dimension_px ?? 256);
+  let lightboxMaxPx = $derived(Math.max(previewMaxPx, 1024));
   let totalResultGroupCount = $derived(result?.groups.length ?? 0);
   let canScanAgain = $derived(inputDir.trim().length > 0);
   let staleResults = $derived(
@@ -817,11 +818,11 @@
     <GroupDetailModal
       group={selectedGroup}
       previewMaxPx={previewMaxPx}
+      lightboxMaxPx={lightboxMaxPx}
       onClose={closeGroupDetails}
       onCopyPath={(path) => void copyPath(path)}
       onCopyAllPaths={(paths) => void copyAllPaths(paths)}
       onRevealPath={(path) => void revealPath(path)}
-      onOpenImage={(path) => void openImagePath(path)}
     />
   {/if}
 </div>

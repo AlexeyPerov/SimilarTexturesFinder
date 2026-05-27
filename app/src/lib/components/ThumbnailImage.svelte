@@ -1,20 +1,25 @@
 <script lang="ts">
-  import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+  import { convertFileSrc } from "@tauri-apps/api/core";
+  import { fetchImagePreview, type ImageDimensions } from "$lib/imagePreview";
 
   type Props = {
     imagePath: string;
     alt?: string;
     maxPx?: number;
+    fit?: "cover" | "contain";
     class?: string;
     onOpenImage?: (path: string) => void;
+    onDimensions?: (dims: ImageDimensions) => void;
   };
 
   let {
     imagePath,
     alt = imagePath,
     maxPx = 256,
+    fit = "cover",
     class: className = "",
     onOpenImage,
+    onDimensions,
   }: Props = $props();
 
   let src = $state("");
@@ -32,11 +37,10 @@
 
     void (async () => {
       try {
-        const out = await invoke<{ path: string }>("get_image_preview", {
-          request: { path, maxPx: px },
-        });
+        const out = await fetchImagePreview(path, px);
         if (!active) return;
         src = convertFileSrc(out.path);
+        onDimensions?.({ width: out.width, height: out.height });
       } catch {
         if (!active) return;
         failed = true;
@@ -60,6 +64,7 @@
   {/if}
   <img
     class={className}
+    class:contain={fit === "contain"}
     {src}
     {alt}
     loading="lazy"
@@ -110,10 +115,15 @@
   img {
     display: block;
     width: 100%;
+    height: 100%;
     object-fit: cover;
     background: var(--bg-thumb);
     opacity: 0;
     transition: opacity 0.15s ease;
+  }
+
+  img.contain {
+    object-fit: contain;
   }
 
   img.loaded {
