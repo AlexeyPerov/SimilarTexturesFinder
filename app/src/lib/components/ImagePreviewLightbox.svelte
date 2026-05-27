@@ -20,7 +20,6 @@
     onCopyPath,
   }: Props = $props();
 
-  let pathInput: HTMLInputElement | undefined = $state();
   let resolvedDimensions = $state<ImageDimensions | undefined>(undefined);
 
   $effect(() => {
@@ -54,9 +53,6 @@
     }
   }
 
-  function selectPath() {
-    pathInput?.select();
-  }
 </script>
 
 <svelte:window onkeydown={onKeyDown} />
@@ -96,12 +92,10 @@
 
     <div class="lightbox-path-row">
       <input
-        bind:this={pathInput}
         readonly
         class="path-input"
         value={imagePath}
         aria-label="Image path"
-        onclick={selectPath}
       />
       <button type="button" class="action-btn" onclick={() => onCopyPath(imagePath)}>Copy path</button>
     </div>

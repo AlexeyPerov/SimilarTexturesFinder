@@ -549,7 +549,6 @@
     color: var(--text-secondary);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.72rem;
-    user-select: all;
   }
 
   .size-cell {
