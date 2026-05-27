@@ -65,6 +65,9 @@ rustc-ice-*.txt
 # Test images
 /test-images/
 
+# Local planning / specs (not versioned)
+/specs/
+
 .DS_Store
 node_modules
 /build
