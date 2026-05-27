@@ -198,7 +198,7 @@
                       imagePath={imagePath}
                       maxPx={previewMaxPx}
                       alt={imagePath}
-                      class="grid-thumb"
+                      shellClass="grid-thumb"
                       {onOpenImage}
                     />
                     <figcaption>{toBaseName(imagePath)}</figcaption>
@@ -482,6 +482,7 @@
   }
 
   :global(.grid-thumb) {
+    --thumb-height: 76px;
     height: 76px;
   }
 

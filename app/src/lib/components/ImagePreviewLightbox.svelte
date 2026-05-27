@@ -89,7 +89,7 @@
         imagePath={imagePath}
         {maxPx}
         fit="contain"
-        class="lightbox-img"
+        shellClass="lightbox-thumb"
         alt={imagePath}
       />
     </div>
@@ -181,20 +181,21 @@
   }
 
   .lightbox-preview {
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 12rem;
     max-height: min(70vh, 720px);
+    overflow: hidden;
     padding: 0.75rem 1rem;
     background: var(--bg-card-inner);
   }
 
-  :global(.lightbox-img) {
-    max-width: 100%;
+  .lightbox-preview :global(.lightbox-thumb) {
+    width: 100%;
+    height: 100%;
     max-height: min(68vh, 700px);
-    width: auto !important;
-    height: auto !important;
   }
 
   .lightbox-path-row {

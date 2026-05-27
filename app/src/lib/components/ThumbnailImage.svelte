@@ -8,6 +8,7 @@
     maxPx?: number;
     fit?: "cover" | "contain";
     class?: string;
+    shellClass?: string;
     onOpenImage?: (path: string) => void;
     onDimensions?: (dims: ImageDimensions) => void;
   };
@@ -18,6 +19,7 @@
     maxPx = 256,
     fit = "cover",
     class: className = "",
+    shellClass = "",
     onOpenImage,
     onDimensions,
   }: Props = $props();
@@ -56,7 +58,7 @@
   });
 </script>
 
-<div class="thumb-shell" class:loading>
+<div class="thumb-shell {shellClass}" class:loading>
   {#if loading}
     <div class="thumb-placeholder" aria-hidden="true">
       <div class="thumb-spinner"></div>
@@ -84,7 +86,14 @@
   .thumb-shell {
     position: relative;
     width: 100%;
+    height: var(--thumb-height, auto);
+  }
+
+  .thumb-shell.lightbox-thumb {
     height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .thumb-placeholder {
@@ -124,6 +133,13 @@
 
   img.contain {
     object-fit: contain;
+  }
+
+  .thumb-shell.lightbox-thumb img {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
   }
 
   img.loaded {

@@ -149,7 +149,7 @@
                       maxPx={previewMaxPx}
                       fit="contain"
                       alt={imagePath}
-                      class="detail-img"
+                      shellClass="detail-img"
                       onDimensions={(dims) => rememberDimensions(imagePath, dims)}
                     />
                   </button>
@@ -214,7 +214,7 @@
                               maxPx={previewMaxPx}
                               fit="contain"
                               alt={reason.left}
-                              class="pair-img"
+                              shellClass="pair-img"
                               onDimensions={(dims) => rememberDimensions(reason.left, dims)}
                             />
                             <figcaption>{toBaseName(reason.left)}</figcaption>
@@ -243,7 +243,7 @@
                               maxPx={previewMaxPx}
                               fit="contain"
                               alt={reason.right}
-                              class="pair-img"
+                              shellClass="pair-img"
                               onDimensions={(dims) => rememberDimensions(reason.right, dims)}
                             />
                             <figcaption>{toBaseName(reason.right)}</figcaption>
@@ -484,6 +484,7 @@
     cursor: pointer;
     display: block;
     width: 100%;
+    height: 110px;
     text-align: left;
   }
 
@@ -497,6 +498,7 @@
   }
 
   :global(.detail-img) {
+    --thumb-height: 110px;
     height: 110px;
   }
 
@@ -672,6 +674,7 @@
   }
 
   :global(.pair-img) {
+    --thumb-height: 96px;
     height: 96px;
   }
 
