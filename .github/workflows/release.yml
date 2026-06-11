@@ -81,4 +81,7 @@ jobs:
           name: Similar Textures Finder ${{ github.ref_name }}
           generate_release_notes: true
           draft: true
-          files: artifacts/**/*
+          files: |
+            artifacts/**/dmg/*.dmg
+            artifacts/**/msi/*.msi
+            artifacts/**/nsis/*-setup.exe
